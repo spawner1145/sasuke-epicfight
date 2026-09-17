@@ -34,6 +34,7 @@ public final class CombatController {
     public static final int READY_WINDOW = 60;
     public static final int SUSANOO_READY_WINDOW = 100;
     public static final int SHEATHE_ATTACK_WINDOW = 22;
+    public static final float BASE_ATTACK_DAMAGE = 9F;
 
     public static final class State {
         public Phase phase = Phase.NORMAL;
@@ -179,7 +180,7 @@ public final class CombatController {
         }
         if (input.key() == 1 && state.phase == Phase.AMATERASU_TWO && now >= state.firstReady) {
             state.firstReady = now + COOLDOWN;
-            erupt(player, player.position(), 3.5F, 12F);
+            erupt(player, player.position(), 3.5F, 20F);
             BlackFlameController.aura(player);
             summon(player, state);
             persist(player, state);
@@ -202,7 +203,7 @@ public final class CombatController {
                     target.stopRiding();
                     state.captured.add(target);
                     if (target instanceof LivingEntity living) ParalysisController.capture(living);
-                    damage(player, target, 6F);
+                    damage(player, target, 16F);
                 }
             }
             start(player, state, Phase.COMBO, "amaterasu_combo", 83);
@@ -426,7 +427,7 @@ public final class CombatController {
                     target.hurtMarked = true;
                     if (target instanceof ServerPlayer other) other.connection.teleport(target.getX(), target.getY(), target.getZ(), target.getYRot(), target.getXRot());
                 }
-                erupt(player, next, 0.7F, 2F);
+                erupt(player, next, 0.7F, 9F);
             }
             if (next == null || ++state.waveStep >= 14) {
                 state.waveDone = true;
@@ -434,9 +435,9 @@ public final class CombatController {
                 SasukeNetwork.burst(player, state.impact, -3F);
             }
         }
-        if (state.phase == Phase.AMATERASU_ONE && elapsed == state.waveBurstAt) erupt(player, state.impact, 3F, 9F);
+        if (state.phase == Phase.AMATERASU_ONE && elapsed == state.waveBurstAt) erupt(player, state.impact, 3F, 18F);
         if (state.phase == Phase.AMATERASU_TWO && elapsed == 1) SasukeNetwork.burst(player, state.impact, -3.5F);
-        if (state.phase == Phase.AMATERASU_TWO && elapsed == 10) erupt(player, state.impact, 3.5F, 12F);
+        if (state.phase == Phase.AMATERASU_TWO && elapsed == 10) erupt(player, state.impact, 3.5F, 20F);
         if (state.phase == Phase.COMBO) {
             if (state.spirit == null || !state.spirit.isAlive()) { clear(player, state); return; }
             Vec3 grip = state.comboGrip;
@@ -459,7 +460,7 @@ public final class CombatController {
                     state.captured.add(target);
                     ParalysisController.capture(target);
                     BlackFlameController.burn(player, target);
-                    damage(player, target, 6F);
+                    damage(player, target, 16F);
                 }
             }
             for (Entity target : state.captured) {
@@ -478,7 +479,7 @@ public final class CombatController {
                     if (target.getBoundingBox().distanceToSqr(grip) > radius * radius) continue;
                     var obstruction = player.level().clip(new ClipContext(grip, target.getBoundingBox().getCenter(), ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
                     if (obstruction.getType() != HitResult.Type.MISS) continue;
-                    BlackFlameController.damage(player, target, elapsed == 70 ? 16F : 8F);
+                    BlackFlameController.damage(player, target, elapsed == 70 ? 24F : 12F);
                     if (target instanceof LivingEntity living) BlackFlameController.burn(player, living);
                 }
                 if (elapsed == 70) state.captured.clear();
@@ -550,9 +551,14 @@ public final class CombatController {
             && (!(target instanceof ServerPlayer other) || (!other.isCreative() && player.canHarmPlayer(other)));
     }
 
+    static float scaledSkillDamage(ServerPlayer player, float baseDamage) {
+        double attack = player.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE);
+        return (float)(baseDamage * Math.max(0D, attack) / BASE_ATTACK_DAMAGE);
+    }
+
     static boolean damage(ServerPlayer player, Entity target, float amount) {
         if (!validTarget(player, target)) return false;
-        return target.hurt(new SkillDamageSource(player), amount);
+        return target.hurt(new SkillDamageSource(player), scaledSkillDamage(player, amount));
     }
 
     private static void erupt(ServerPlayer player, Vec3 position, float radius, float amount) {
@@ -586,7 +592,7 @@ public final class CombatController {
         Vec3 center = player.getBoundingBox().getCenter();
         for (Entity target : player.level().getEntities(player, player.getBoundingBox().inflate(3), entity -> validTarget(player, entity))) {
             if (target.getBoundingBox().distanceToSqr(center) > 9 || !player.hasLineOfSight(target)) continue;
-            damage(player, target, 6F);
+            damage(player, target, 14F);
             Vec3 outward = target.position().subtract(player.position()).multiply(1, 0, 1).normalize();
             target.push(outward.x * 0.55, 0.15, outward.z * 0.55);
             target.hurtMarked = true;

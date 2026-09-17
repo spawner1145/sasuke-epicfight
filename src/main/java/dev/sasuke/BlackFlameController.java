@@ -33,7 +33,7 @@ public final class BlackFlameController {
     public static boolean damage(ServerPlayer owner, net.minecraft.world.entity.Entity target, float amount) {
         if (!CombatController.validTarget(owner, target)) return false;
         if (target instanceof LivingEntity living) burn(owner, living);
-        return target.hurt(new FlameDamageSource(owner), amount);
+        return target.hurt(new FlameDamageSource(owner), CombatController.scaledSkillDamage(owner, amount));
     }
 
     @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.LOWEST)
@@ -153,7 +153,7 @@ public final class BlackFlameController {
                 continue;
             }
             if (now % 20 == 0) {
-                target.hurt(new FlameDamageSource(owner), 2F);
+                target.hurt(new FlameDamageSource(owner), CombatController.scaledSkillDamage(owner, 4F));
                 SasukeNetwork.flame(level, target.position(), Math.max(0.35F, target.getBbWidth() * 0.6F), target.getId(), 1);
             }
         }

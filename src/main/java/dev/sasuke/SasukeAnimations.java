@@ -37,7 +37,11 @@ public final class SasukeAnimations {
                         (name.equals("dash_spin_slash")
                             ? new BasicAttackAnimation(0.06F, phase[0] / 60F, phase[1] / 60F, phase[2] / 60F, null, Armatures.BIPED.get().toolR, accessor, Armatures.BIPED)
                             : new RecoveryAttackAnimation(phase[0] / 60F, phase[1] / 60F, duration(name) / 60F, accessor))
-                            .addProperty(AttackAnimationProperty.ATTACK_SPEED_FACTOR, 0F));
+                            .<BasicAttackAnimation, Float>addProperty(AttackAnimationProperty.ATTACK_SPEED_FACTOR, 0F)
+                            .addProperty(yesman.epicfight.api.animation.property.AnimationProperty.AttackPhaseProperty.DAMAGE_MODIFIER,
+                                yesman.epicfight.api.utils.math.ValueModifier.multiplier(
+                                    (name.equals("dash_spin_slash") ? 26F : name.startsWith("4a") ? 12F : CombatController.BASE_ATTACK_DAMAGE)
+                                        / CombatController.BASE_ATTACK_DAMAGE)));
                     ATTACKS.put(name, attack);
                 } else if (name.equals("sheathe_flourish")) {
                     PLAYER.put(name, builder.<ActionAnimation>nextAccessor("player/" + name, accessor -> new SheatheAnimation(accessor)));

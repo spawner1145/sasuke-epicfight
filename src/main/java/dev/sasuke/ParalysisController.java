@@ -50,6 +50,7 @@ public final class ParalysisController {
     }
 
     public static boolean active(LivingEntity target) {
+        if (!target.isAlive() || target.isRemoved()) return false;
         if (CombatController.captured(target)) return true;
         Stun stun = STUNS.get(target);
         return stun != null && target.level().dimension().equals(stun.dimension) && target.level().getGameTime() < stun.until;
@@ -102,7 +103,12 @@ public final class ParalysisController {
             var patch = EpicFightCapabilities.getEntityPatch(event.getEntity(), LivingEntityPatch.class);
             if (patch != null) CaptureStamina.drain(patch);
         }
-        if (active(event.getEntity())) event.setCanceled(true);
+        LivingEntity target = event.getEntity();
+        if (active(target)) {
+            if (target.hurtTime > 0) --target.hurtTime;
+            if (!(target instanceof ServerPlayer) && target.invulnerableTime > 0) --target.invulnerableTime;
+            event.setCanceled(true);
+        }
     }
     @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
     public static void attack(LivingAttackEvent event) {
