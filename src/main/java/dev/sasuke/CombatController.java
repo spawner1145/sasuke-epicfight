@@ -32,6 +32,7 @@ public final class CombatController {
     public static final int COOLDOWN = 160;
     public static final int READY_WINDOW = 60;
     public static final int SUSANOO_READY_WINDOW = 100;
+    public static final int SHEATHE_ATTACK_WINDOW = 22;
 
     public static final class State {
         public Phase phase = Phase.NORMAL;
@@ -78,6 +79,10 @@ public final class CombatController {
         return state != null && state.specialAttack;
     }
 
+    private static boolean allowsBasicAttack(Phase phase) {
+        return phase == Phase.NORMAL || phase == Phase.SECOND_READY;
+    }
+
     public static boolean captured(LivingEntity target) {
         for (var entry : STATES.entrySet()) {
             State state = entry.getValue();
@@ -97,7 +102,7 @@ public final class CombatController {
         State state = STATES.get(player);
         if (state == null || state.phase != Phase.SHEATHE) return;
         clear(player, state);
-        if (completed) state.specialUntil = player.level().getGameTime() + 14;
+        if (completed) state.specialUntil = player.level().getGameTime() + SHEATHE_ATTACK_WINDOW;
     }
 
     private static State state(ServerPlayer player) {
@@ -116,7 +121,7 @@ public final class CombatController {
         State state = state(player);
         long now = player.level().getGameTime();
         if (input.key() == 5) {
-            if (state.phase != Phase.NORMAL || player.isUsingItem() || player.isPassenger() || !player.onGround() || !patch.getEntityState().canBasicAttack()) return;
+            if (!allowsBasicAttack(state.phase) || player.isUsingItem() || player.isPassenger() || !player.onGround() || !patch.getEntityState().canBasicAttack()) return;
             var buffer = new net.minecraft.network.FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
             try { patch.getSkill(yesman.epicfight.skill.SkillSlots.BASIC_ATTACK).requestCasting(patch, buffer); }
             finally { buffer.release(); }
@@ -267,7 +272,7 @@ public final class CombatController {
             patch.getEventListener().addEventListener(EventType.BASIC_ATTACK_EVENT, LISTENER, attack -> {
                 if (!equipped(player)) return;
                 if (state.phase == Phase.SHEATHE) clear(player, state);
-                if (state.phase == Phase.NORMAL && player.level().getGameTime() < state.specialUntil) {
+                if (allowsBasicAttack(state.phase) && player.level().getGameTime() < state.specialUntil) {
                     attack.setCanceled(true);
                     state.specialAttack = true;
                     try {
@@ -280,7 +285,7 @@ public final class CombatController {
                 if (state.phase == Phase.READY || state.phase == Phase.DRAW) {
                     attack.setCanceled(true);
                     input(player, new SasukeNetwork.Input(3, 0, 0));
-                } else if (state.phase != Phase.NORMAL) attack.setCanceled(true);
+                } else if (!allowsBasicAttack(state.phase)) attack.setCanceled(true);
                 else {
                     var data = patch.getSkill(yesman.epicfight.skill.SkillSlots.BASIC_ATTACK).getDataManager();
                     int counter = data.getDataValue(yesman.epicfight.skill.SkillDataKeys.COMBO_COUNTER.get());
@@ -307,8 +312,8 @@ public final class CombatController {
             if (state.phase != Phase.NORMAL) clear(player, state);
             return;
         }
+        if (allowsBasicAttack(state.phase)) tickBasic(player, state);
         if (state.phase == Phase.NORMAL) {
-            tickBasic(player, state);
             if (player.tickCount % 10 == 0) SasukeNetwork.status(player, state);
             return;
         }

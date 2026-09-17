@@ -121,7 +121,7 @@ public final class SasukeClient {
         boolean attackHeld = attackKey.getType() == InputConstants.Type.MOUSE
             ? GLFW.glfwGetMouseButton(mc.getWindow().getWindow(), attackKey.getValue()) == GLFW.GLFW_PRESS
             : InputConstants.isKeyDown(mc.getWindow().getWindow(), attackKey.getValue());
-        if (equipped() && mc.screen == null && mc.isWindowActive() && attackHeld && status.phase() == 0 && mc.player.tickCount % 2 == 0) send(5);
+        if (equipped() && mc.screen == null && mc.isWindowActive() && attackHeld && (status.phase() == 0 || status.phase() == 6) && mc.player.tickCount % 2 == 0) send(5);
         while (FIRST.consumeClick()) if (equipped() && mc.screen == null) send(1);
         while (SECOND.consumeClick()) if (equipped() && mc.screen == null) send(2);
         status = new SasukeNetwork.Status(status.phase(), Math.max(0, status.firstCooldown() - 1), Math.max(0, status.secondCooldown() - 1));

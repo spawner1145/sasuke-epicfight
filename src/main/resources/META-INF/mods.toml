@@ -21,7 +21,7 @@ side="BOTH"
 [[dependencies.sasuke_epicfight]]
 modId="epicfight"
 mandatory=true
-versionRange="[20.14.17,20.15)"
+versionRange="[20.14.17,)"
 ordering="AFTER"
 side="BOTH"
 [[dependencies.sasuke_epicfight]]
