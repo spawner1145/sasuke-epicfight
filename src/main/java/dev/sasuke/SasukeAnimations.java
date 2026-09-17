@@ -35,7 +35,7 @@ public final class SasukeAnimations {
                     float[] phase = phase(name);
                     AnimationAccessor<BasicAttackAnimation> attack = builder.nextAccessor("player/" + name, accessor ->
                         (name.equals("dash_spin_slash")
-                            ? new BasicAttackAnimation(0.06F, phase[0] / 60F, phase[1] / 60F, phase[2] / 60F, null, Armatures.BIPED.get().toolR, accessor, Armatures.BIPED)
+                            ? new SpinSlashAnimation(phase[0] / 60F, phase[1] / 60F, phase[2] / 60F, accessor)
                             : new RecoveryAttackAnimation(phase[0] / 60F, phase[1] / 60F, duration(name) / 60F, accessor))
                             .<BasicAttackAnimation, Float>addProperty(AttackAnimationProperty.ATTACK_SPEED_FACTOR, 0F)
                             .addProperty(yesman.epicfight.api.animation.property.AnimationProperty.AttackPhaseProperty.DAMAGE_MODIFIER,

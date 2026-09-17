@@ -180,9 +180,9 @@ public final class CombatController {
         }
         if (input.key() == 1 && state.phase == Phase.AMATERASU_TWO && now >= state.firstReady) {
             state.firstReady = now + COOLDOWN;
-            erupt(player, player.position(), 3.5F, 20F);
             BlackFlameController.aura(player);
-            summon(player, state);
+            summon(player, state, false);
+            combinedSummonBurst(player);
             persist(player, state);
             return;
         }
@@ -400,7 +400,7 @@ public final class CombatController {
                 state.spirit.dissolve();
                 state.spirit = null;
             }
-            player.move(MoverType.SELF, horizontal(player).scale(0.45));
+            player.move(MoverType.SELF, horizontal(player).scale(RecoveryAttackAnimation.FOURTH_FORWARD_DISTANCE * 1.5 / 10.0));
             player.connection.teleport(player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot());
             if (elapsed >= 6) {
                 var joint = patch.getArmature().searchJointByName("Tool_R");
@@ -576,6 +576,10 @@ public final class CombatController {
     }
 
     private static void summon(ServerPlayer player, State state) {
+        summon(player, state, true);
+    }
+
+    private static void summon(ServerPlayer player, State state, boolean burst) {
         if (state.spirit != null) state.spirit.dissolve();
         state.shieldHits = 3;
         state.skeletonUntil = player.level().getGameTime() + 12 + SUSANOO_READY_WINDOW;
@@ -584,7 +588,34 @@ public final class CombatController {
         state.spirit.setPos(player.position());
         start(player, state, Phase.DRAW, "draw_to_side", 12);
         player.level().addFreshEntity(state.spirit);
-        summonBurst(player);
+        if (burst) summonBurst(player);
+    }
+
+    private static void combinedSummonBurst(ServerPlayer player) {
+        Vec3 position = player.position();
+        Vec3 center = player.getBoundingBox().getCenter();
+        float radius = 3.5F;
+        AABB flameArea = new AABB(position.x - radius, position.y - 0.5, position.z - radius,
+            position.x + radius, position.y + radius * 1.6, position.z + radius);
+        AABB skeletonArea = player.getBoundingBox().inflate(3);
+        SasukeNetwork.summon(player);
+        SasukeNetwork.burst(player, position, radius);
+        BlackFlameController.pool(player, position, radius);
+        for (Entity target : player.level().getEntities(player, flameArea.minmax(skeletonArea), entity -> validTarget(player, entity))) {
+            boolean skeletonHit = skeletonArea.intersects(target.getBoundingBox())
+                && target.getBoundingBox().distanceToSqr(center) <= 9 && player.hasLineOfSight(target);
+            boolean flameHit = flameArea.intersects(target.getBoundingBox()) && player.level().clip(new ClipContext(
+                position.add(0, 0.2, 0), target.getBoundingBox().getCenter(), ClipContext.Block.COLLIDER,
+                ClipContext.Fluid.NONE, player)).getType() == HitResult.Type.MISS;
+            float amount = (skeletonHit ? 14F : 0F) + (flameHit ? 20F : 0F);
+            if (flameHit) BlackFlameController.damage(player, target, amount);
+            else if (skeletonHit) damage(player, target, amount);
+            if (skeletonHit) {
+                Vec3 outward = target.position().subtract(position).multiply(1, 0, 1).normalize();
+                target.push(outward.x * 0.55, 0.15, outward.z * 0.55);
+                target.hurtMarked = true;
+            }
+        }
     }
 
     private static void summonBurst(ServerPlayer player) {
