@@ -1,0 +1,139 @@
+{
+  "source": "D:\\code\\test model\\susanoo_sasuke_v2.blend",
+  "fps": 60,
+  "actions": {
+    "1a": {
+      "frames": [
+        0.0,
+        20.0
+      ],
+      "seconds": 0.3333333333333333
+    },
+    "2a": {
+      "frames": [
+        0.0,
+        33.0
+      ],
+      "seconds": 0.55
+    },
+    "3a": {
+      "frames": [
+        0.0,
+        19.0
+      ],
+      "seconds": 0.31666666666666665
+    },
+    "4a1": {
+      "frames": [
+        0.0,
+        36.0
+      ],
+      "seconds": 0.6
+    },
+    "4a2": {
+      "frames": [
+        0.0,
+        28.0
+      ],
+      "seconds": 0.4666666666666667
+    },
+    "4a3": {
+      "frames": [
+        0.0,
+        55.0
+      ],
+      "seconds": 0.9166666666666666
+    },
+    "idle": {
+      "frames": [
+        0.0,
+        90.0
+      ],
+      "seconds": 1.5
+    },
+    "idle_guard": {
+      "frames": [
+        0.0,
+        72.0
+      ],
+      "seconds": 1.2
+    },
+    "idle_sword_side": {
+      "frames": [
+        0.0,
+        90.0
+      ],
+      "seconds": 1.5
+    },
+    "run_sheathed": {
+      "frames": [
+        0.0,
+        24.0
+      ],
+      "seconds": 0.4
+    },
+    "run_sword_side": {
+      "frames": [
+        0.0,
+        24.0
+      ],
+      "seconds": 0.4
+    },
+    "draw_to_side": {
+      "frames": [
+        0.0,
+        30.0
+      ],
+      "seconds": 0.5
+    },
+    "draw_to_guard": {
+      "frames": [
+        0.0,
+        29.0
+      ],
+      "seconds": 0.48333333333333334
+    },
+    "dash_spin_slash": {
+      "frames": [
+        0.0,
+        79.0
+      ],
+      "seconds": 1.3166666666666667
+    },
+    "sheathe_flourish": {
+      "frames": [
+        0.0,
+        105.0
+      ],
+      "seconds": 1.75
+    },
+    "amaterasu_1": {
+      "frames": [
+        0.0,
+        55.0
+      ],
+      "seconds": 0.9166666666666666
+    },
+    "amaterasu_2": {
+      "frames": [
+        0.0,
+        65.0
+      ],
+      "seconds": 1.0833333333333333
+    },
+    "amaterasu_combo": {
+      "frames": [
+        0.0,
+        240.0
+      ],
+      "seconds": 4.0
+    },
+    "perfect_parry": {
+      "frames": [
+        0.0,
+        24.0
+      ],
+      "seconds": 0.4
+    }
+  }
+}

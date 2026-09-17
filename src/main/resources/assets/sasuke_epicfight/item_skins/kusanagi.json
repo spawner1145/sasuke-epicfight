@@ -1,0 +1,6 @@
+{
+  "renderer":"epic_fight_avalon:mesh_item",
+  "texture":"sasuke_epicfight:textures/item/kusanagi.png",
+  "mesh_main":"sasuke_epicfight:item/kusanagi",
+  "mesh_off":"sasuke_epicfight:item/kusanagi"
+}

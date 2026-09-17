@@ -1,0 +1,40 @@
+plugins {
+    id 'java'
+    id 'net.minecraftforge.gradle' version '6.0.54'
+}
+
+group = 'dev.sasuke'
+version = '0.1.0'
+base { archivesName = 'sasuke-epicfight' }
+java { sourceCompatibility = targetCompatibility = JavaVersion.VERSION_17 }
+minecraft {
+    mappings channel: 'official', version: '1.20.1'
+    copyIdeResources = true
+    runs {
+        configureEach {
+            property 'mixin.env.remapRefMap', 'true'
+            property 'mixin.env.refMapRemappingFile', "${projectDir}/build/createSrgToMcp/output.srg"
+        }
+        client {
+            workingDirectory project.file('run')
+            mods { sasuke_epicfight { source sourceSets.main } }
+        }
+        server {
+            workingDirectory project.file('run-server')
+            args '--nogui'
+            mods { sasuke_epicfight { source sourceSets.main } }
+        }
+    }
+}
+repositories { flatDir { dirs 'libs' } }
+dependencies {
+    minecraft 'net.minecraftforge:forge:1.20.1-47.4.0'
+    implementation fg.deobf('local:epicfight:20.14.17')
+    implementation fg.deobf('local:avalon:20.12.6.5')
+    implementation fg.deobf('local:photon:1.1.17')
+    implementation fg.deobf('local:photon_and_epicfight:1.1.4')
+    implementation fg.deobf('local:ldlib:1.0.52.a')
+    runtimeOnly fg.deobf('local:cloth_config:11.1.136')
+}
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8'; options.release = 17 }
+jar { finalizedBy 'reobfJar' }

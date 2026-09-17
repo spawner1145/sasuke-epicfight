@@ -1,0 +1,44 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="All Rights Reserved"
+[[mods]]
+modId="sasuke_epicfight"
+version="0.1.0"
+displayName="Sasuke: Susanoo & Kusanagi"
+description='''Sasuke combat, Susanoo and Amaterasu for Epic Fight.'''
+[[dependencies.sasuke_epicfight]]
+modId="forge"
+mandatory=true
+versionRange="[47,)"
+ordering="NONE"
+side="BOTH"
+[[dependencies.sasuke_epicfight]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.20.1,1.20.2)"
+ordering="NONE"
+side="BOTH"
+[[dependencies.sasuke_epicfight]]
+modId="epicfight"
+mandatory=true
+versionRange="[20.14.17,20.15)"
+ordering="AFTER"
+side="BOTH"
+[[dependencies.sasuke_epicfight]]
+modId="epic_fight_avalon"
+mandatory=true
+versionRange="[20.12.6.5,)"
+ordering="AFTER"
+side="BOTH"
+[[dependencies.sasuke_epicfight]]
+modId="photon"
+mandatory=true
+versionRange="[1.1.17,)"
+ordering="AFTER"
+side="BOTH"
+[[dependencies.sasuke_epicfight]]
+modId="photon_and_epicfight"
+mandatory=true
+versionRange="[1.1.4,)"
+ordering="AFTER"
+side="BOTH"
