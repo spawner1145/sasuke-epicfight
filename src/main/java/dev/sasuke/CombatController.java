@@ -60,6 +60,7 @@ public final class CombatController {
         Vec3 comboGrip = Vec3.ZERO;
         boolean basicTriggered;
         int shieldHits;
+        long skeletonUntil;
         final List<LivingEntity> swept = new ArrayList<>();
         SusanooEntity spirit;
         ServerPlayerPatch installedPatch;
@@ -222,8 +223,10 @@ public final class CombatController {
             start(player, state, Phase.AMATERASU_TWO, "amaterasu_2", 24);
             return;
         }
-        if (state.phase != Phase.NORMAL || patch.getEntityState().inaction() || player.isPassenger()) return;
-        if (input.key() == 1 && now >= state.firstReady) {
+        boolean skeletonCast = input.key() == 2 && (state.phase == Phase.READY
+            || state.phase == Phase.DRAW && now >= state.comboInputUntil);
+        if (state.phase != Phase.NORMAL && !skeletonCast || patch.getEntityState().inaction() || player.isPassenger()) return;
+        if (input.key() == 1 && state.phase == Phase.NORMAL && now >= state.firstReady) {
             state.firstReady = now + COOLDOWN;
             summon(player, state);
             state.comboInputUntil = now + 6;
@@ -272,6 +275,12 @@ public final class CombatController {
         State state = state(player);
         var patch = EpicFightCapabilities.getEntityPatch(player, ServerPlayerPatch.class);
         if (patch == null) return;
+        if ((state.phase == Phase.AMATERASU_ONE || state.phase == Phase.SECOND_READY || state.phase == Phase.AMATERASU_TWO)
+            && state.spirit != null && player.level().getGameTime() >= state.skeletonUntil) {
+            state.spirit.dissolve();
+            state.spirit = null;
+            state.shieldHits = 0;
+        }
         if (superArmor(player)) patch.setStamina(patch.getMaxStamina());
         var resistance = player.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.KNOCKBACK_RESISTANCE);
         if (resistance != null) {
@@ -494,6 +503,11 @@ public final class CombatController {
                     state.until = now + READY_WINDOW;
                     SasukeNetwork.status(player, state);
                 }
+                case SECOND_READY, AMATERASU_TWO -> {
+                    if (state.spirit != null && state.spirit.isAlive() && now < state.skeletonUntil) {
+                        start(player, state, Phase.READY, "idle_sword_side", (int)(state.skeletonUntil - now));
+                    } else clear(player, state);
+                }
                 default -> clear(player, state);
             }
         }
@@ -531,7 +545,8 @@ public final class CombatController {
     }
 
     static boolean validTarget(ServerPlayer player, Entity target) {
-        return target != player && target.isAlive() && !(target instanceof SusanooEntity) && !target.isSpectator() && !player.isAlliedTo(target)
+        return target != player && target.isAlive() && !(target instanceof net.minecraft.world.entity.item.ItemEntity)
+            && !(target instanceof SusanooEntity) && !target.isSpectator() && !player.isAlliedTo(target)
             && (!(target instanceof ServerPlayer other) || (!other.isCreative() && player.canHarmPlayer(other)));
     }
 
@@ -555,7 +570,9 @@ public final class CombatController {
     }
 
     private static void summon(ServerPlayer player, State state) {
+        if (state.spirit != null) state.spirit.dissolve();
         state.shieldHits = 3;
+        state.skeletonUntil = player.level().getGameTime() + 12 + SUSANOO_READY_WINDOW;
         state.spirit = new SusanooEntity(SasukeMod.SUSANOO.get(), player.level());
         state.spirit.tame(player);
         state.spirit.setPos(player.position());
