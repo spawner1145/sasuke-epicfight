@@ -629,10 +629,9 @@ public final class CombatController {
 
     @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
     public static void preventKnockback(net.minecraftforge.event.entity.living.LivingKnockBackEvent event) {
-        if (superArmor(event.getEntity())) {
+        if (superArmor(event.getEntity()) || skillBody(event.getEntity())) {
             event.setStrength(0.0F);
             event.setCanceled(true);
-            event.getEntity().setDeltaMovement(0, event.getEntity().getDeltaMovement().y, 0);
         }
     }
 
