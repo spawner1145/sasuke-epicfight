@@ -93,7 +93,7 @@ public final class CombatController {
         };
     }
 
-    private static final class SkillDamageSource extends net.minecraft.world.damagesource.DamageSource {
+    static class SkillDamageSource extends net.minecraft.world.damagesource.DamageSource {
         SkillDamageSource(ServerPlayer player) {
             super(player.damageSources().playerAttack(player).typeHolder(), player);
         }
@@ -320,6 +320,7 @@ public final class CombatController {
                 if (state.phase == Phase.DASH && BlackFlameController.hasAura(player) && hit.getAttackDamage() > 0) BlackFlameController.burn(player, hit.getTarget());
             });
             patch.getEventListener().addEventListener(EventType.BASIC_ATTACK_EVENT, LISTENER, attack -> {
+                if (ParalysisController.active(player)) { attack.setCanceled(true); return; }
                 if (!equipped(player)) return;
                 if (state.phase == Phase.SHEATHE) clear(player, state);
                 if (allowsBasicAttack(state.phase) && player.level().getGameTime() < state.specialUntil) {
@@ -448,6 +449,7 @@ public final class CombatController {
                     if (obstruction.getType() != HitResult.Type.MISS) continue;
                     state.captured.add(target);
                     ParalysisController.capture(target);
+                    BlackFlameController.burn(player, target);
                     damage(player, target, 6F);
                 }
             }
@@ -467,7 +469,7 @@ public final class CombatController {
                     if (target.getBoundingBox().distanceToSqr(grip) > radius * radius) continue;
                     var obstruction = player.level().clip(new ClipContext(grip, target.getBoundingBox().getCenter(), ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
                     if (obstruction.getType() != HitResult.Type.MISS) continue;
-                    damage(player, target, elapsed == 70 ? 16F : 8F);
+                    BlackFlameController.damage(player, target, elapsed == 70 ? 16F : 8F);
                     if (target instanceof LivingEntity living) BlackFlameController.burn(player, living);
                 }
                 if (elapsed == 70) state.captured.clear();
@@ -546,7 +548,7 @@ public final class CombatController {
             Vec3 center = target.getBoundingBox().getCenter();
             var obstruction = player.level().clip(new ClipContext(position.add(0, 0.2, 0), center, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
             if (obstruction.getType() == HitResult.Type.MISS) {
-                damage(player, target, amount);
+                BlackFlameController.damage(player, target, amount);
                 if (target instanceof LivingEntity living) BlackFlameController.burn(player, living);
             }
         }

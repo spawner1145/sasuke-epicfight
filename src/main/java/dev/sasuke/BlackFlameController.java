@@ -26,6 +26,41 @@ public final class BlackFlameController {
     private static final Map<LivingEntity, Burn> BURNS = new WeakHashMap<>();
     private static final Map<ServerPlayer, Long> AURAS = new WeakHashMap<>();
 
+    private static final class FlameDamageSource extends CombatController.SkillDamageSource {
+        FlameDamageSource(ServerPlayer player) { super(player); }
+    }
+
+    public static boolean damage(ServerPlayer owner, net.minecraft.world.entity.Entity target, float amount) {
+        if (!CombatController.validTarget(owner, target)) return false;
+        if (target instanceof LivingEntity living) burn(owner, living);
+        return target.hurt(new FlameDamageSource(owner), amount);
+    }
+
+    @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.LOWEST)
+    public static void cookDrops(net.minecraftforge.event.entity.living.LivingDropsEvent event) {
+        if (!(event.getEntity().level() instanceof ServerLevel level)) return;
+        Burn burn = BURNS.get(event.getEntity());
+        boolean blackFlame = burn != null && burn.expires > level.getGameTime();
+        blackFlame |= event.getSource() instanceof FlameDamageSource;
+        if (!blackFlame && event.getSource() instanceof yesman.epicfight.world.damagesource.EpicFightDamageSource epic
+            && epic.getEntity() instanceof ServerPlayer owner && hasAura(owner)) {
+            blackFlame = epic.getAnimation().equals(SasukeAnimations.player("dash_spin_slash"));
+        }
+        if (!blackFlame) return;
+        for (var drop : event.getDrops()) {
+            var raw = drop.getItem();
+            var food = raw.getFoodProperties(event.getEntity());
+            if (food == null || !food.isMeat()) continue;
+            var inventory = new net.minecraft.world.SimpleContainer(raw.copyWithCount(1));
+            var recipe = level.getRecipeManager().getRecipeFor(net.minecraft.world.item.crafting.RecipeType.SMELTING, inventory, level);
+            if (recipe.isEmpty()) continue;
+            var cooked = recipe.get().assemble(inventory, level.registryAccess());
+            if (cooked.isEmpty() || !cooked.isEdible()) continue;
+            cooked.setCount(cooked.getCount() * raw.getCount());
+            drop.setItem(cooked);
+        }
+    }
+
     public static void pool(ServerPlayer owner, Vec3 position, float radius) {
         var pools = POOLS.computeIfAbsent(owner.serverLevel(), ignored -> new ArrayList<>());
         if (pools.stream().filter(pool -> pool.owner.equals(owner.getUUID())).count() >= 48) {
@@ -118,7 +153,7 @@ public final class BlackFlameController {
                 continue;
             }
             if (now % 20 == 0) {
-                CombatController.damage(owner, target, 2F);
+                target.hurt(new FlameDamageSource(owner), 2F);
                 SasukeNetwork.flame(level, target.position(), Math.max(0.35F, target.getBbWidth() * 0.6F), target.getId(), 1);
             }
         }

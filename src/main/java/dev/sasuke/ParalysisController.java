@@ -23,15 +23,30 @@ public final class ParalysisController {
     private static final Map<LivingEntity, Stun> STUNS = new WeakHashMap<>();
     private record Facing(float yaw, float pitch) {}
     private static final Map<LivingEntity, Facing> CAPTURES = new WeakHashMap<>();
+    private static final java.util.UUID CONTROL_LOCK = java.util.UUID.fromString("f8713db4-6aa4-45aa-a168-718e84978f85");
+
+    private static void lockSkills(LivingEntity target) {
+        var patch = EpicFightCapabilities.getEntityPatch(target, yesman.epicfight.world.capabilities.entitypatch.player.ServerPlayerPatch.class);
+        if (patch == null) return;
+        var listener = patch.getEventListener();
+        listener.addEventListener(yesman.epicfight.world.entity.eventlistener.PlayerEventListener.EventType.SKILL_CAST_EVENT, CONTROL_LOCK,
+            event -> { if (active(target)) event.setCanceled(true); });
+        listener.addEventListener(yesman.epicfight.world.entity.eventlistener.PlayerEventListener.EventType.BASIC_ATTACK_EVENT, CONTROL_LOCK,
+            event -> { if (active(target)) event.setCanceled(true); });
+    }
 
     public static void capture(LivingEntity target) {
         CombatController.interruptForCapture(target);
+        lockSkills(target);
         CAPTURES.putIfAbsent(target, new Facing(target.getYRot(), target.getXRot()));
         target.stopUsingItem();
         target.stopRiding();
         if (target instanceof Mob mob) mob.getNavigation().stop();
         var patch = EpicFightCapabilities.getEntityPatch(target, LivingEntityPatch.class);
-        if (patch != null) patch.applyStun(yesman.epicfight.world.damagesource.StunType.LONG, 0.1F);
+        if (patch != null) {
+            CaptureStamina.drain(patch);
+            patch.applyStun(yesman.epicfight.world.damagesource.StunType.LONG, 0.1F);
+        }
     }
 
     public static boolean active(LivingEntity target) {
@@ -41,6 +56,7 @@ public final class ParalysisController {
     }
     public static void apply(LivingEntity target) {
         if (!target.isAlive() || CombatController.superArmor(target)) return;
+        lockSkills(target);
         if (CombatController.skillBody(target)) CombatController.interruptForCapture(target);
         STUNS.put(target, new Stun(target.level().getGameTime() + 30, target.position(), target.getYRot(), target.getXRot(), target.level().dimension()));
         target.stopUsingItem();
@@ -54,6 +70,8 @@ public final class ParalysisController {
         if (event.phase != TickEvent.Phase.END) return;
         CAPTURES.entrySet().removeIf(entry -> !entry.getKey().isAlive() || entry.getKey().isRemoved() || !CombatController.captured(entry.getKey()));
         CAPTURES.forEach((target, facing) -> {
+            var patch = EpicFightCapabilities.getEntityPatch(target, LivingEntityPatch.class);
+            if (patch != null) CaptureStamina.drain(patch);
             target.setDeltaMovement(Vec3.ZERO);
             target.stopUsingItem();
             target.setYRot(facing.yaw); target.setXRot(facing.pitch);
@@ -80,6 +98,10 @@ public final class ParalysisController {
     }
     @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
     public static void livingTick(net.minecraftforge.event.entity.living.LivingEvent.LivingTickEvent event) {
+        if (CombatController.captured(event.getEntity())) {
+            var patch = EpicFightCapabilities.getEntityPatch(event.getEntity(), LivingEntityPatch.class);
+            if (patch != null) CaptureStamina.drain(patch);
+        }
         if (active(event.getEntity())) event.setCanceled(true);
     }
     @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
@@ -94,6 +116,10 @@ public final class ParalysisController {
     public static void breaking(BlockEvent.BreakEvent event) { if (active(event.getPlayer())) event.setCanceled(true); }
     @SubscribeEvent
     public static void playerAttack(net.minecraftforge.event.entity.player.AttackEntityEvent event) { if (active(event.getEntity())) event.setCanceled(true); }
+    @SubscribeEvent
+    public static void mount(net.minecraftforge.event.entity.EntityMountEvent event) {
+        if (event.isMounting() && event.getEntityMounting() instanceof LivingEntity target && active(target)) event.setCanceled(true);
+    }
     @SubscribeEvent
     public static void toss(net.minecraftforge.event.entity.item.ItemTossEvent event) {
         if (active(event.getPlayer())) {
