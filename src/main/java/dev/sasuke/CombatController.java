@@ -29,6 +29,7 @@ public final class CombatController {
     private static final Map<ServerPlayer, State> STATES = new WeakHashMap<>();
     private static final UUID LISTENER = UUID.fromString("c1fe110d-5216-4e5d-a873-293b2cf47a91");
     private static final UUID SUSANOO_SPEED = UUID.fromString("6359a1bd-ef3e-46e3-93ec-b02492eae3e7");
+    private static final UUID SUSANOO_KNOCKBACK = UUID.fromString("ade2c302-2bf7-4f47-a1b3-1945f39de20c");
     public static final int COOLDOWN = 160;
     public static final int READY_WINDOW = 60;
     public static final int SUSANOO_READY_WINDOW = 100;
@@ -81,6 +82,29 @@ public final class CombatController {
 
     private static boolean allowsBasicAttack(Phase phase) {
         return phase == Phase.NORMAL || phase == Phase.SECOND_READY;
+    }
+
+    public static boolean skillBody(LivingEntity target) {
+        if (!(target instanceof ServerPlayer player) || !equipped(player) || captured(target)) return false;
+        State state = STATES.get(player);
+        return state != null && switch (state.phase) {
+            case DRAW, DASH, SHEATHE, AMATERASU_ONE, AMATERASU_TWO, COMBO, COMBO_RECOVERY -> true;
+            default -> false;
+        };
+    }
+
+    private static final class SkillDamageSource extends net.minecraft.world.damagesource.DamageSource {
+        SkillDamageSource(ServerPlayer player) {
+            super(player.damageSources().playerAttack(player).typeHolder(), player);
+        }
+    }
+
+    private static boolean skillDamage(net.minecraft.world.damagesource.DamageSource source) {
+        if (source == null) return false;
+        if (source instanceof SkillDamageSource) return true;
+        return source instanceof yesman.epicfight.world.damagesource.EpicFightDamageSource epic
+            && !epic.isBasicAttack() && epic.getEntity() instanceof net.minecraft.world.entity.player.Player
+            && !epic.is(net.minecraft.tags.DamageTypeTags.IS_EXPLOSION);
     }
 
     public static boolean superArmor(LivingEntity target) {
@@ -248,6 +272,15 @@ public final class CombatController {
         State state = state(player);
         var patch = EpicFightCapabilities.getEntityPatch(player, ServerPlayerPatch.class);
         if (patch == null) return;
+        if (superArmor(player)) patch.setStamina(patch.getMaxStamina());
+        var resistance = player.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.KNOCKBACK_RESISTANCE);
+        if (resistance != null) {
+            if (superArmor(player)) {
+                if (resistance.getModifier(SUSANOO_KNOCKBACK) == null) resistance.addTransientModifier(
+                    new net.minecraft.world.entity.ai.attributes.AttributeModifier(SUSANOO_KNOCKBACK, "Susanoo knockback resistance", 1.0,
+                        net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADDITION));
+            } else resistance.removeModifier(SUSANOO_KNOCKBACK);
+        }
         var speed = player.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED);
         if (speed != null) {
             boolean enabled = equipped(player) && state.spirit != null && state.spirit.isAlive() && !state.spirit.dissolving();
@@ -257,6 +290,9 @@ public final class CombatController {
         }
         if (state.installedPatch != patch) {
             state.installedPatch = patch;
+            patch.getEventListener().addEventListener(EventType.STAMINA_CONSUME_EVENT, LISTENER, consume -> {
+                if (superArmor(player)) consume.setAmount(0F);
+            });
             patch.getEventListener().addEventListener(EventType.SKILL_CAST_EVENT, LISTENER, cast -> {
                 if (ParalysisController.active(player)) cast.setCanceled(true);
             });
@@ -341,10 +377,6 @@ public final class CombatController {
             player.setDeltaMovement(0, player.getDeltaMovement().y, 0);
             if (player.position().distanceToSqr(state.anchor) > 0.0025) player.connection.teleport(state.anchor.x, player.getY(), state.anchor.z, player.getYRot(), player.getXRot());
         }
-        if (superArmor(player) && state.phase != Phase.DASH) {
-            Vec3 velocity = player.getDeltaMovement();
-            if (velocity.x != 0 || velocity.z != 0) player.setDeltaMovement(0, velocity.y, 0);
-        }
         if (state.phase == Phase.COMBO || state.phase == Phase.COMBO_RECOVERY) {
             player.setYRot(state.lockedYaw);
             player.setYHeadRot(state.lockedYaw);
@@ -407,6 +439,17 @@ public final class CombatController {
                     return;
                 }
                 SasukeNetwork.burst(player, grip, -1.8F, true);
+            }
+            if (elapsed >= 30 && elapsed <= 70) {
+                for (LivingEntity target : player.level().getEntitiesOfClass(LivingEntity.class, new AABB(grip, grip).inflate(2.6),
+                    entity -> validTarget(player, entity) && !state.captured.contains(entity))) {
+                    if (target.getBoundingBox().distanceToSqr(grip) > 2.6 * 2.6) continue;
+                    var obstruction = player.level().clip(new ClipContext(grip, target.getBoundingBox().getCenter(), ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
+                    if (obstruction.getType() != HitResult.Type.MISS) continue;
+                    state.captured.add(target);
+                    ParalysisController.capture(target);
+                    damage(player, target, 6F);
+                }
             }
             for (Entity target : state.captured) {
                 Vec3 held = grip.add(0, -target.getBbHeight() * 0.5, 0);
@@ -492,7 +535,7 @@ public final class CombatController {
 
     static boolean damage(ServerPlayer player, Entity target, float amount) {
         if (!validTarget(player, target)) return false;
-        return target.hurt(player.damageSources().playerAttack(player), amount);
+        return target.hurt(new SkillDamageSource(player), amount);
     }
 
     private static void erupt(ServerPlayer player, Vec3 position, float radius, float amount) {
@@ -532,6 +575,8 @@ public final class CombatController {
     }
 
     private static void clear(ServerPlayer player, State state) {
+        var resistance = player.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.KNOCKBACK_RESISTANCE);
+        if (resistance != null) resistance.removeModifier(SUSANOO_KNOCKBACK);
         var speed = player.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED);
         if (speed != null) speed.removeModifier(SUSANOO_SPEED);
         state.comboInputUntil = 0;
@@ -577,7 +622,9 @@ public final class CombatController {
         LivingEntity target = event.getStunnedEntityPatch().getOriginal();
         if (event.getStunType() == yesman.epicfight.world.damagesource.StunType.HOLD) {
             interruptForCapture(target);
-        } else if (superArmor(target)) event.setCanceled(true);
+        } else if (superArmor(target) || skillBody(target) && !skillDamage(event.getDamageSource())) {
+            event.setCanceled(true);
+        } else if (skillBody(target) && skillDamage(event.getDamageSource())) interruptForCapture(target);
     }
 
     @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
@@ -605,7 +652,13 @@ public final class CombatController {
         if (!(event.getEntity() instanceof ServerPlayer player) || event.getAmount() <= 0) return;
         State state = STATES.get(player);
         if (state == null) return;
-        if (state.shieldHits <= 0 || state.spirit == null || !state.spirit.isAlive() || state.spirit.dissolving()) return;
+        boolean skeletonProtected = state.shieldHits > 0 && state.spirit != null && state.spirit.isAlive() && !state.spirit.dissolving();
+        if (!superArmor(player) && skillBody(player) && event.getSource() instanceof SkillDamageSource) {
+            clear(player, state);
+            var patch = EpicFightCapabilities.getEntityPatch(player, ServerPlayerPatch.class);
+            if (patch != null) patch.applyStun(yesman.epicfight.world.damagesource.StunType.SHORT, 0.25F);
+        }
+        if (!skeletonProtected) return;
         event.setAmount(event.getAmount() * 0.1F);
         if (--state.shieldHits == 0) {
             clear(player, state);

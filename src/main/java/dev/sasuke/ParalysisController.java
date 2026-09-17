@@ -41,6 +41,7 @@ public final class ParalysisController {
     }
     public static void apply(LivingEntity target) {
         if (!target.isAlive() || CombatController.superArmor(target)) return;
+        if (CombatController.skillBody(target)) CombatController.interruptForCapture(target);
         STUNS.put(target, new Stun(target.level().getGameTime() + 30, target.position(), target.getYRot(), target.getXRot(), target.level().dimension()));
         target.stopUsingItem();
         target.stopRiding();
