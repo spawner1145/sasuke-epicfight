@@ -25,6 +25,7 @@ public final class ParalysisController {
     private static final Map<LivingEntity, Facing> CAPTURES = new WeakHashMap<>();
 
     public static void capture(LivingEntity target) {
+        CombatController.interruptForCapture(target);
         CAPTURES.putIfAbsent(target, new Facing(target.getYRot(), target.getXRot()));
         target.stopUsingItem();
         target.stopRiding();
@@ -39,7 +40,7 @@ public final class ParalysisController {
         return stun != null && target.level().dimension().equals(stun.dimension) && target.level().getGameTime() < stun.until;
     }
     public static void apply(LivingEntity target) {
-        if (!target.isAlive()) return;
+        if (!target.isAlive() || CombatController.superArmor(target)) return;
         STUNS.put(target, new Stun(target.level().getGameTime() + 30, target.position(), target.getYRot(), target.getXRot(), target.level().dimension()));
         target.stopUsingItem();
         target.stopRiding();

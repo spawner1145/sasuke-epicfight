@@ -83,6 +83,20 @@ public final class CombatController {
         return phase == Phase.NORMAL || phase == Phase.SECOND_READY;
     }
 
+    public static boolean superArmor(LivingEntity target) {
+        if (!(target instanceof ServerPlayer player) || captured(target)) return false;
+        State state = STATES.get(player);
+        return state != null && equipped(player) && (state.phase == Phase.COMBO || state.phase == Phase.COMBO_RECOVERY
+            || state.spirit != null && state.spirit.isAlive() && !state.spirit.dissolving());
+    }
+
+    public static void interruptForCapture(LivingEntity target) {
+        if (target instanceof ServerPlayer player) {
+            State state = STATES.get(player);
+            if (state != null && state.phase != Phase.NORMAL) clear(player, state);
+        }
+    }
+
     public static boolean captured(LivingEntity target) {
         for (var entry : STATES.entrySet()) {
             State state = entry.getValue();
@@ -327,6 +341,10 @@ public final class CombatController {
             player.setDeltaMovement(0, player.getDeltaMovement().y, 0);
             if (player.position().distanceToSqr(state.anchor) > 0.0025) player.connection.teleport(state.anchor.x, player.getY(), state.anchor.z, player.getYRot(), player.getXRot());
         }
+        if (superArmor(player) && state.phase != Phase.DASH) {
+            Vec3 velocity = player.getDeltaMovement();
+            if (velocity.x != 0 || velocity.z != 0) player.setDeltaMovement(0, velocity.y, 0);
+        }
         if (state.phase == Phase.COMBO || state.phase == Phase.COMBO_RECOVERY) {
             player.setYRot(state.lockedYaw);
             player.setYHeadRot(state.lockedYaw);
@@ -553,6 +571,23 @@ public final class CombatController {
 
     @SubscribeEvent
     public static void stopped(ServerStoppedEvent event) { STATES.clear(); }
+
+    @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
+    public static void preventStun(yesman.epicfight.api.forgeevent.EntityStunEvent event) {
+        LivingEntity target = event.getStunnedEntityPatch().getOriginal();
+        if (event.getStunType() == yesman.epicfight.world.damagesource.StunType.HOLD) {
+            interruptForCapture(target);
+        } else if (superArmor(target)) event.setCanceled(true);
+    }
+
+    @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
+    public static void preventKnockback(net.minecraftforge.event.entity.living.LivingKnockBackEvent event) {
+        if (superArmor(event.getEntity())) {
+            event.setStrength(0.0F);
+            event.setCanceled(true);
+            event.getEntity().setDeltaMovement(0, event.getEntity().getDeltaMovement().y, 0);
+        }
+    }
 
     @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
     public static void protect(net.minecraftforge.event.entity.living.LivingAttackEvent event) {
