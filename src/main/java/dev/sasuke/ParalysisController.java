@@ -105,8 +105,8 @@ public final class ParalysisController {
         }
         LivingEntity target = event.getEntity();
         if (active(target)) {
-            if (target.hurtTime > 0) --target.hurtTime;
-            if (!(target instanceof ServerPlayer) && target.invulnerableTime > 0) --target.invulnerableTime;
+            target.hurtTime = 0;
+            target.invulnerableTime = 0;
             event.setCanceled(true);
         }
     }

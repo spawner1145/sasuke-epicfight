@@ -1,25 +1,16 @@
 package dev.sasuke;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
 import com.merlin204.avalon.entity.client.renderer.EmptyRenderer;
 import com.merlin204.avalon.entity.client.renderer.patch.entity.AvalonVFXRendererPatch;
 import com.mojang.blaze3d.platform.InputConstants;
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.texture.OverlayTexture;
-import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.client.event.MovementInputUpdateEvent;
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
 import net.minecraftforge.client.event.EntityRenderersEvent;
 import net.minecraftforge.client.event.RenderGuiOverlayEvent;
-import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.client.settings.KeyConflictContext;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -32,11 +23,9 @@ public final class SasukeClient {
     public static final KeyMapping FIRST = new KeyMapping("key.sasuke_epicfight.first", KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_U, "key.categories.sasuke_epicfight");
     public static final KeyMapping SECOND = new KeyMapping("key.sasuke_epicfight.second", KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_I, "key.categories.sasuke_epicfight");
     private static SasukeNetwork.Status status = new SasukeNetwork.Status(0, 0, 0);
-    private static final List<Spike> SPIKES = new ArrayList<>();
     private static Object lastLevel;
     private static float comboYaw;
     private static float comboPitch;
-    private record Spike(Vec3 position, float radius, int seed, long born, boolean radial) {}
 
     @Mod.EventBusSubscriber(modid = SasukeMod.ID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
     public static final class Registration {
@@ -67,7 +56,6 @@ public final class SasukeClient {
     public static void burst(SasukeNetwork.Burst message) {
         var level = Minecraft.getInstance().level;
         if (level != null) {
-            if (message.radius() > 0) SPIKES.add(new Spike(message.position(), message.radius(), message.seed(), level.getGameTime(), message.radial()));
             SasukeEffects.burst(message);
         }
     }
@@ -111,7 +99,6 @@ public final class SasukeClient {
         var mc = Minecraft.getInstance();
         if (lastLevel != mc.level) {
             lastLevel = mc.level;
-            SPIKES.clear();
             SasukeEffects.clear();
             status = new SasukeNetwork.Status(0, 0, 0);
         }
@@ -125,7 +112,6 @@ public final class SasukeClient {
         while (FIRST.consumeClick()) if (equipped() && mc.screen == null) send(1);
         while (SECOND.consumeClick()) if (equipped() && mc.screen == null) send(2);
         status = new SasukeNetwork.Status(status.phase(), Math.max(0, status.firstCooldown() - 1), Math.max(0, status.secondCooldown() - 1));
-        SPIKES.removeIf(spike -> mc.level.getGameTime() - spike.born > 25);
     }
 
     @SubscribeEvent
@@ -138,63 +124,4 @@ public final class SasukeClient {
         event.getGuiGraphics().drawCenteredString(mc.font, text, event.getWindow().getGuiScaledWidth() / 2, event.getWindow().getGuiScaledHeight() - 66, 0xD9B5FF);
     }
 
-    @SubscribeEvent
-    public static void render(RenderLevelStageEvent event) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES || SPIKES.isEmpty()) return;
-        var mc = Minecraft.getInstance();
-        if (mc.level == null) return;
-        PoseStack stack = event.getPoseStack();
-        Vec3 camera = event.getCamera().getPosition();
-        var buffers = mc.renderBuffers().bufferSource();
-        RenderType type = RenderType.entityTranslucent(SasukeMod.id("textures/particle/white.png"));
-        VertexConsumer vertices = buffers.getBuffer(type);
-        for (Spike spike : SPIKES) {
-            float age = mc.level.getGameTime() - spike.born + event.getPartialTick();
-            float rise = (float)(1 - Math.pow(1 - Math.min(1F, age / 4F), 3)) * Math.min(1F, (26F - age) / 12F);
-            if (rise <= 0) continue;
-            Random random = new Random(spike.seed);
-            stack.pushPose();
-            stack.translate(spike.position.x - camera.x, spike.position.y - camera.y, spike.position.z - camera.z);
-            int count = spike.radial ? 32 : spike.radius < 1 ? 7 : 27;
-            for (int index = 0; index < count; index++) {
-                stack.pushPose();
-                double angle = random.nextDouble() * Math.PI * 2;
-                float distance = index == 0 ? 0 : random.nextFloat() * spike.radius;
-                float centerX = (float)Math.cos(angle) * distance;
-                float centerZ = (float)Math.sin(angle) * distance;
-                if (spike.radial) {
-                    float vertical = 1F - 2F * (index + 0.5F) / count;
-                    float ring = (float)Math.sqrt(1 - vertical * vertical);
-                    float azimuth = index * 2.399963F + spike.seed * 0.01F;
-                    stack.mulPose(new org.joml.Quaternionf().rotationTo(new org.joml.Vector3f(0, 1, 0), new org.joml.Vector3f(ring * (float)Math.cos(azimuth), vertical, ring * (float)Math.sin(azimuth))));
-                    centerX = centerZ = 0;
-                } else {
-                    stack.mulPose(new org.joml.Quaternionf().rotateY((float)angle).rotateZ(distance / spike.radius * 0.45F));
-                }
-                float height = spike.radius * (0.65F + random.nextFloat() * 1.4F) * rise;
-                float width = (0.14F + random.nextFloat() * 0.19F) * spike.radius;
-                float fade = Math.min(1F, (26F - age) / 10F);
-                cone(vertices, stack, centerX, centerZ, height * 1.012F, width * 1.035F, 0.17F, 0.015F, 0.24F, fade * 0.4F);
-                cone(vertices, stack, centerX, centerZ, height, width, 0.018F, 0.006F, 0.028F, fade * 0.98F);
-                stack.popPose();
-            }
-            stack.popPose();
-        }
-        buffers.endBatch(type);
-    }
-
-    private static void cone(VertexConsumer vertices, PoseStack stack, float centerX, float centerZ, float height, float width, float red, float green, float blue, float alpha) {
-        for (int side = 0; side < 5; side++) {
-            double first = side * Math.PI * 2 / 5;
-            double second = (side + 1) * Math.PI * 2 / 5;
-            vertex(vertices, stack, centerX + (float)Math.cos(first) * width, 0, centerZ + (float)Math.sin(first) * width, red, green, blue, alpha);
-            vertex(vertices, stack, centerX + (float)Math.cos(second) * width, 0, centerZ + (float)Math.sin(second) * width, red, green, blue, alpha);
-            vertex(vertices, stack, centerX + width * 0.45F, height, centerZ, red, green, blue, alpha);
-            vertex(vertices, stack, centerX + width * 0.45F, height, centerZ, red, green, blue, alpha);
-        }
-    }
-
-    private static void vertex(VertexConsumer vertices, PoseStack stack, float posX, float posY, float posZ, float red, float green, float blue, float alpha) {
-        vertices.vertex(stack.last().pose(), posX, posY, posZ).color(red, green, blue, alpha).uv(0, 0).overlayCoords(OverlayTexture.NO_OVERLAY).uv2(15728880).normal(stack.last().normal(), 0, 1, 0).endVertex();
-    }
 }

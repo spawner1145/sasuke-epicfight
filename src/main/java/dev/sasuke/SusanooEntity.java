@@ -22,7 +22,7 @@ public class SusanooEntity extends VFXEntity {
         setDisSpeed(1F / 30F);
         dissolveTicks = 32;
         if (getOwner() instanceof net.minecraft.server.level.ServerPlayer player) {
-            SasukeNetwork.flame(player.serverLevel(), position().add(0, 1.5, 0), 1.5F, -1, 3);
+            SasukeNetwork.flame(player.serverLevel(), position().add(0, 1.5, 0), 1.2F, -1, 10);
         }
     }
 
@@ -36,9 +36,8 @@ public class SusanooEntity extends VFXEntity {
         entityData.set(TEXTURE_PATH, TEXTURE.toString());
         entityData.set(LIGHT_TEXTURE_PATH, TEXTURE.toString());
         setPlayAnimation(true);
-        setShouldRender(false);
+        setShouldRender(true);
         setNoAi(true);
-        setInvisible(true);
         noCulling = true;
     }
 
@@ -75,8 +74,9 @@ public class SusanooEntity extends VFXEntity {
             setDeltaMovement(Vec3.ZERO);
             moveToOwner(owner);
             setStartYRot(owner.yBodyRot);
-            if (dissolving() && !level().isClientSide && tickCount % 3 == 0 && owner instanceof net.minecraft.server.level.ServerPlayer player) {
-                SasukeNetwork.flame(player.serverLevel(), position().add(0, 1.5, 0), 0.8F, -1, 4);
+            if (!dissolving() && (action().equals("idle_sword_side") || action().equals("run_sword_side"))) {
+                boolean moving = owner.isSprinting();
+                animate(moving ? "run_sword_side" : "idle_sword_side");
             }
         } else if (!level().isClientSide && tickCount > 5) {
             discard();

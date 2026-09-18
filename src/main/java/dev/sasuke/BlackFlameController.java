@@ -27,7 +27,25 @@ public final class BlackFlameController {
     private static final Map<ServerPlayer, Long> AURAS = new WeakHashMap<>();
 
     private static final class FlameDamageSource extends CombatController.SkillDamageSource {
-        FlameDamageSource(ServerPlayer player) { super(player); }
+        private final boolean bypassCooldown;
+
+        FlameDamageSource(ServerPlayer player) { this(player, false); }
+
+        FlameDamageSource(ServerPlayer player, boolean bypassCooldown) {
+            super(player);
+            this.bypassCooldown = bypassCooldown;
+        }
+
+        @Override
+        public boolean is(net.minecraft.tags.TagKey<net.minecraft.world.damagesource.DamageType> tag) {
+            return bypassCooldown && tag.equals(net.minecraft.tags.DamageTypeTags.BYPASSES_COOLDOWN) || super.is(tag);
+        }
+    }
+
+    public static boolean comboDamage(ServerPlayer owner, net.minecraft.world.entity.Entity target, float amount) {
+        if (!CombatController.validTarget(owner, target)) return false;
+        if (target instanceof LivingEntity living) burn(owner, living);
+        return target.hurt(new FlameDamageSource(owner, true), CombatController.scaledSkillDamage(owner, amount));
     }
 
     public static boolean damage(ServerPlayer owner, net.minecraft.world.entity.Entity target, float amount) {
@@ -73,6 +91,7 @@ public final class BlackFlameController {
     }
 
     public static void aura(ServerPlayer owner) {
+        if (!hasAura(owner)) SasukeNetwork.flame(owner.serverLevel(), owner.position(), 0.8F, owner.getId(), 2);
         AURAS.put(owner, owner.level().getGameTime() + 100);
     }
 

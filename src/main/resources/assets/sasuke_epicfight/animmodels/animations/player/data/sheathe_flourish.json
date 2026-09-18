@@ -1,0 +1,32 @@
+{
+  "trail_effects": [
+    {
+      "start_time": 0.08,
+      "end_time": 1.6167,
+      "fade_time": 0.14,
+      "joint": "Tool_R",
+      "begin_pos": [
+        -0.005,
+        -0.0177,
+        0.0898
+      ],
+      "end_pos": [
+        -0.005,
+        0.1474,
+        -1.7
+      ],
+      "particle_type": "epicfight:swing_trail",
+      "interpolations": 12,
+      "lifetime": 3,
+      "color": [
+        255,
+        255,
+        255
+      ],
+      "block_light": 15,
+      "sky_light": 15,
+      "texture_path": "sasuke_epicfight:textures/particle/slash_trail.png"
+    }
+  ]
+}
+

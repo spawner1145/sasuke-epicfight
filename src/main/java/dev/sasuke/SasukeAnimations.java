@@ -10,13 +10,14 @@ import yesman.epicfight.api.animation.types.StaticAnimation;
 import yesman.epicfight.api.animation.property.AnimationProperty.AttackAnimationProperty;
 import yesman.epicfight.api.model.Armature;
 import yesman.epicfight.gameasset.Armatures;
+import yesman.epicfight.gameasset.Animations;
 
 public final class SasukeAnimations {
     public static final Armatures.ArmatureAccessor<Armature> SUSANOO = Armatures.ArmatureAccessor.create(SasukeMod.ID, "entity/susanoo", Armature::new);
     public static final Map<String, AnimationAccessor<? extends StaticAnimation>> PLAYER = new LinkedHashMap<>();
     public static final Map<String, AnimationAccessor<StaticAnimation>> SPIRIT = new LinkedHashMap<>();
     public static final Map<String, AnimationAccessor<BasicAttackAnimation>> ATTACKS = new LinkedHashMap<>();
-    public static final String[] NAMES = {"1a", "2a", "3a", "4a1", "4a2", "4a3", "idle", "idle_guard", "idle_sword_side", "run_sheathed", "run_sword_side", "draw_to_side", "draw_to_guard", "dash_spin_slash", "sheathe_flourish", "amaterasu_1", "amaterasu_2", "amaterasu_combo", "perfect_parry"};
+    public static final String[] NAMES = {"1a", "2a", "3a", "4a1", "4a2", "4a3", "idle", "idle_guard", "idle_sword_side", "run_sheathed", "run_sword_side", "draw_to_side", "dash_spin_slash", "sheathe_flourish", "amaterasu_1", "amaterasu_2", "amaterasu_combo"};
 
     public static void register(AnimationManager.AnimationRegistryEvent event) {
         event.newBuilder(SasukeMod.ID, builder -> {
@@ -54,6 +55,9 @@ public final class SasukeAnimations {
                 }
                 SPIRIT.put(name, builder.nextAccessor("susanoo/" + name, accessor -> new StaticAnimation(0.06F, loop, accessor, SUSANOO)));
             }
+            // Use EpicFight's uchigatana arm pose; the lower body remains the idle pose.
+            PLAYER.put("draw_to_guard", Animations.BIPED_HOLD_UCHIGATANA);
+            PLAYER.put("perfect_parry", Animations.UCHIGATANA_GUARD);
         });
     }
 

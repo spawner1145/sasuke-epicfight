@@ -13,6 +13,7 @@ import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import yesman.epicfight.api.utils.LevelUtil;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.server.ServerStoppedEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -25,6 +26,7 @@ public final class LightningController {
         Display.ItemDisplay sword;
         long expires;
         Vec3 orb;
+        Vec3 fracture;
     }
 
     public static void plant(ServerPlayer player) {
@@ -47,8 +49,13 @@ public final class LightningController {
         sword.setPos(floor.getLocation().add(0, 0.8, 0));
         sword.setYRot(player.getYRot());
         player.level().addFreshEntity(sword);
+        player.serverLevel().sendParticles(yesman.epicfight.particle.EpicFightParticles.GROUND_SLAM.get(),
+            floor.getLocation().x, floor.getLocation().y, floor.getLocation().z, 1, 0.9, 10, 0.35, 0.8);
+        Vec3 fractureCenter = floor.getBlockPos().getCenter();
+        LevelUtil.circleSlamFracture(player, player.level(), fractureCenter, 1.1D, false, false);
         Anchor anchor = new Anchor();
         anchor.sword = sword;
+        anchor.fracture = fractureCenter;
         anchor.expires = player.level().getGameTime() + 600;
         ANCHORS.put(player, anchor);
         strike(player, sword.position());
@@ -64,7 +71,7 @@ public final class LightningController {
         Anchor anchor = ANCHORS.get(player);
         if (anchor != null && anchor.sword.level() == player.level() && anchor.orb == null) {
             anchor.orb = player.position().add(0, 0.9, 0);
-            SasukeNetwork.flame(player.serverLevel(), anchor.orb, 0.65F, player.getId(), 6);
+            SasukeNetwork.flame(player.serverLevel(), anchor.orb, 0.42F, player.getId(), 6);
         }
     }
 
@@ -78,6 +85,9 @@ public final class LightningController {
             var anchor = entry.getValue();
             if (!player.isAlive() || player.hasDisconnected() || player.level() != anchor.sword.level() || !anchor.sword.isAlive() || player.level().getGameTime() >= anchor.expires) {
                 anchor.sword.discard(); iterator.remove(); continue;
+            }
+            if (player.level().getGameTime() % 10 == 0) {
+                LevelUtil.circleSlamFracture(player, player.level(), anchor.fracture, 1.1D, true, true);
             }
             if (anchor.orb == null) continue;
             Vec3 destination = anchor.sword.position();
@@ -95,7 +105,7 @@ public final class LightningController {
             }
             if (impact == null && direction.length() > 0.75) {
                 anchor.orb = next;
-                SasukeNetwork.flame(player.serverLevel(), anchor.orb, 0.65F, player.getId(), 6);
+                SasukeNetwork.flame(player.serverLevel(), anchor.orb, 0.42F, player.getId(), 6);
                 continue;
             }
             if (impact != null) destination = impact;
@@ -106,9 +116,9 @@ public final class LightningController {
     }
 
     private static void strike(ServerPlayer player, Vec3 position) {
-        SasukeNetwork.flame(player.serverLevel(), position, 4.5F, player.getId(), 9);
-        for (var target : player.level().getEntities(player, new AABB(position, position).inflate(4.5), entity -> CombatController.validTarget(player, entity))) {
-            if (target.getBoundingBox().distanceToSqr(position) <= 20.25 && player.level().clip(new ClipContext(position, target.getBoundingBox().getCenter(), ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player)).getType() == HitResult.Type.MISS) {
+        SasukeNetwork.flame(player.serverLevel(), position, 2.8F, player.getId(), 9);
+        for (var target : player.level().getEntities(player, new AABB(position, position).inflate(2.8), entity -> CombatController.validTarget(player, entity))) {
+            if (target.getBoundingBox().distanceToSqr(position) <= 7.84 && player.level().clip(new ClipContext(position, target.getBoundingBox().getCenter(), ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player)).getType() == HitResult.Type.MISS) {
                 if (CombatController.damage(player, target, 12F) && target instanceof net.minecraft.world.entity.LivingEntity living) ParalysisController.apply(living);
             }
         }

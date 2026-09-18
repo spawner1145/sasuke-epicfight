@@ -35,6 +35,9 @@ public final class CombatController {
     public static final int SUSANOO_READY_WINDOW = 100;
     public static final int SHEATHE_ATTACK_WINDOW = 22;
     public static final float BASE_ATTACK_DAMAGE = 9F;
+    private static final int COMBO_BURST_START = 25;
+    private static final int COMBO_BURST_END = 65;
+    private static final int COMBO_RELEASE = 68;
 
     public static final class State {
         public Phase phase = Phase.NORMAL;
@@ -170,13 +173,13 @@ public final class CombatController {
         if (input.key() == 4) {
             if (state.phase == Phase.SHEATHE) {
                 clear(player, state);
-                patch.playAnimationSynchronized(SasukeAnimations.player("idle"), 0F);
+                restoreMovementAnimation(player, patch);
             }
             return;
         }
         if (state.phase == Phase.SHEATHE && input.key() != 3) {
             clear(player, state);
-            patch.playAnimationSynchronized(SasukeAnimations.player("idle"), 0F);
+            restoreMovementAnimation(player, patch);
         }
         if (input.key() == 1 && state.phase == Phase.AMATERASU_TWO && now >= state.firstReady) {
             state.firstReady = now + COOLDOWN;
@@ -198,13 +201,19 @@ public final class CombatController {
             Vec3 facing = horizontal(player);
             Vec3 center = player.position().add(facing.scale(3)).add(0, 1.5, 0);
             state.comboGrip = center;
+            Entity firstGrab = null;
+            double firstDistance = Double.MAX_VALUE;
             for (Entity target : player.level().getEntities(player, new AABB(center, center).inflate(4.5), entity -> validTarget(player, entity))) {
                 if (target.getBoundingBox().distanceToSqr(center) <= 20.25 && player.hasLineOfSight(target)) {
-                    target.stopRiding();
-                    state.captured.add(target);
-                    if (target instanceof LivingEntity living) ParalysisController.capture(living);
-                    damage(player, target, 16F);
+                    double distance = target.getBoundingBox().distanceToSqr(center);
+                    if (distance < firstDistance) { firstDistance = distance; firstGrab = target; }
                 }
+            }
+            if (firstGrab != null) {
+                firstGrab.stopRiding();
+                state.captured.add(firstGrab);
+                if (firstGrab instanceof LivingEntity living) ParalysisController.capture(living);
+                damage(player, firstGrab, 16F);
             }
             start(player, state, Phase.COMBO, "amaterasu_combo", 83);
             persist(player, state);
@@ -215,7 +224,7 @@ public final class CombatController {
             Vec3 left = new Vec3(forward.z, 0, -forward.x);
             Vec3 direction = forward.scale(input.forward()).add(left.scale(input.left()));
             Vec3 destination = state.impact;
-            for (int step = 0; direction.lengthSqr() >= 0.01 && step < 6; step++) {
+            for (int step = 0; direction.lengthSqr() >= 0.01 && step < 4; step++) {
                 Vec3 next = groundStep(player, destination, direction.normalize());
                 if (next == null) break;
                 destination = next;
@@ -248,6 +257,13 @@ public final class CombatController {
         player.getPersistentData().putLong("sasukeFirstReady", state.firstReady);
         player.getPersistentData().putLong("sasukeSecondReady", state.secondReady);
         SasukeNetwork.status(player, state);
+    }
+
+    private static void restoreMovementAnimation(ServerPlayer player, ServerPlayerPatch patch) {
+        patch.modifyLivingMotionByCurrentItem();
+        String animation = player.isSprinting() ? "run_sheathed"
+            : player.getDeltaMovement().horizontalDistanceSqr() > 0.0025D ? "walk_sheathed" : "idle";
+        patch.playAnimationSynchronized(SasukeAnimations.player(animation), 0F);
     }
 
     private static void start(ServerPlayer player, State state, Phase phase, String animation, int ticks) {
@@ -381,7 +397,7 @@ public final class CombatController {
         int elapsed = (int)(now - state.began);
         if (state.phase == Phase.SHEATHE && (player.isUsingItem() || player.position().subtract(state.anchor).horizontalDistanceSqr() > 0.01 || !player.onGround())) {
             clear(player, state);
-            patch.playAnimationSynchronized(SasukeAnimations.player("idle"), 0F);
+            restoreMovementAnimation(player, patch);
             return;
         }
         if (state.phase == Phase.COMBO || state.phase == Phase.COMBO_RECOVERY || state.phase == Phase.AMATERASU_ONE || state.phase == Phase.AMATERASU_TWO) {
@@ -400,15 +416,15 @@ public final class CombatController {
                 state.spirit.dissolve();
                 state.spirit = null;
             }
-            player.move(MoverType.SELF, horizontal(player).scale(RecoveryAttackAnimation.FOURTH_FORWARD_DISTANCE * 1.5 / 10.0));
+            player.move(MoverType.SELF, horizontal(player).scale(RecoveryAttackAnimation.FOURTH_FORWARD_DISTANCE * 0.9 / 10.0));
             player.connection.teleport(player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot());
             if (elapsed >= 6) {
                 var joint = patch.getArmature().searchJointByName("Tool_R");
                 var local = patch.getArmature().getBoundTransformFor(patch.getAnimator().getPose(1F), joint).toTranslationVector();
                 Vec3 blade = player.position().add(new Vec3(-local.x, local.y, -local.z).yRot((float)Math.toRadians(-player.yBodyRot)));
-                SasukeNetwork.flame(player.serverLevel(), blade, 0.4F, -1, 4);
                 SasukeNetwork.flame(player.serverLevel(), player.position().add(0, 1, 0), 0.7F, player.getId(), 5);
-                if (BlackFlameController.hasAura(player)) SasukeNetwork.flame(player.serverLevel(), blade, 0.45F, -1, 7);
+                SasukeNetwork.flame(player.serverLevel(), blade, 0.45F, -1, 10);
+                if (BlackFlameController.hasAura(player)) SasukeNetwork.flame(player.serverLevel(), blade, 0.45F, player.getId(), 7);
             }
         }
         if (state.phase == Phase.AMATERASU_ONE && elapsed >= 3 && !state.waveDone) {
@@ -451,18 +467,6 @@ public final class CombatController {
                 }
                 SasukeNetwork.burst(player, grip, -1.8F, true);
             }
-            if (elapsed >= 30 && elapsed <= 70) {
-                for (LivingEntity target : player.level().getEntitiesOfClass(LivingEntity.class, new AABB(grip, grip).inflate(2.6),
-                    entity -> validTarget(player, entity) && !state.captured.contains(entity))) {
-                    if (target.getBoundingBox().distanceToSqr(grip) > 2.6 * 2.6) continue;
-                    var obstruction = player.level().clip(new ClipContext(grip, target.getBoundingBox().getCenter(), ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
-                    if (obstruction.getType() != HitResult.Type.MISS) continue;
-                    state.captured.add(target);
-                    ParalysisController.capture(target);
-                    BlackFlameController.burn(player, target);
-                    damage(player, target, 16F);
-                }
-            }
             for (Entity target : state.captured) {
                 Vec3 held = grip.add(0, -target.getBbHeight() * 0.5, 0);
                 target.setDeltaMovement(Vec3.ZERO);
@@ -471,19 +475,20 @@ public final class CombatController {
                 if (target instanceof ServerPlayer other) other.connection.teleport(held.x, held.y, held.z, other.getYRot(), other.getXRot());
                 else target.teleportTo(held.x, held.y, held.z);
             }
-            if (elapsed >= 30 && elapsed <= 70 && elapsed % 10 == 0) {
-                float radius = elapsed == 70 ? 2.6F : 1.8F;
+            if (elapsed >= COMBO_BURST_START && elapsed <= COMBO_BURST_END && (elapsed - COMBO_BURST_START) % 5 == 0) {
+                boolean finisher = elapsed == COMBO_BURST_END;
+                float radius = finisher ? 3.0F : 2.1F;
                 SasukeNetwork.burst(player, grip, radius, true);
-                BlackFlameController.cloud(player, grip, radius);
+                if ((elapsed - COMBO_BURST_START) % 10 == 0) BlackFlameController.cloud(player, grip, radius);
                 for (Entity target : player.level().getEntities(player, new AABB(grip, grip).inflate(radius), entity -> validTarget(player, entity))) {
                     if (target.getBoundingBox().distanceToSqr(grip) > radius * radius) continue;
                     var obstruction = player.level().clip(new ClipContext(grip, target.getBoundingBox().getCenter(), ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
                     if (obstruction.getType() != HitResult.Type.MISS) continue;
-                    BlackFlameController.damage(player, target, elapsed == 70 ? 24F : 12F);
+                    BlackFlameController.comboDamage(player, target, finisher ? 24F : 6F);
                     if (target instanceof LivingEntity living) BlackFlameController.burn(player, living);
                 }
-                if (elapsed == 70) state.captured.clear();
             }
+            if (elapsed >= COMBO_RELEASE) state.captured.clear();
         }
         if (now >= state.until) {
             switch (state.phase) {
@@ -495,7 +500,7 @@ public final class CombatController {
                 }
                 case READY -> {
                     clear(player, state);
-                    patch.playAnimationSynchronized(SasukeAnimations.player("idle"), 0F);
+                    restoreMovementAnimation(player, patch);
                 }
                 case DASH -> start(player, state, Phase.SHEATHE, "sheathe_flourish", 50);
                 case SHEATHE -> clear(player, state);
@@ -520,7 +525,7 @@ public final class CombatController {
         if (elapsed > 18 || state.basic.isEmpty()) return;
         int end = switch (state.basic) { case "3a" -> 6; case "4a1", "4a2" -> 11; default -> 16; };
         if (elapsed > end) return;
-        if (!state.basic.equals("4a2") && elapsed > 0 && elapsed % 6 == 0) SasukeNetwork.flame(player.serverLevel(), player.position(), 1F, player.getId(), 8);
+        if (!state.basic.equals("4a2") && elapsed > 0 && elapsed % 3 == 0) SasukeNetwork.flame(player.serverLevel(), player.position(), 1F, player.getId(), 8);
         if (state.basic.equals("4a1") && elapsed % 2 == 0) SasukeNetwork.flame(player.serverLevel(), player.position().add(0, 1, 0), 0.9F, player.getId(), 5);
         int trigger = state.basic.equals("4a2") ? 7 : 14;
         if (!state.basicTriggered && elapsed >= trigger) {
@@ -600,6 +605,7 @@ public final class CombatController {
         AABB skeletonArea = player.getBoundingBox().inflate(3);
         SasukeNetwork.summon(player);
         SasukeNetwork.burst(player, position, radius);
+        SasukeNetwork.flame(player.serverLevel(), position.add(0, 1, 0), radius, -1, 10);
         BlackFlameController.pool(player, position, radius);
         for (Entity target : player.level().getEntities(player, flameArea.minmax(skeletonArea), entity -> validTarget(player, entity))) {
             boolean skeletonHit = skeletonArea.intersects(target.getBoundingBox())
@@ -620,6 +626,7 @@ public final class CombatController {
 
     private static void summonBurst(ServerPlayer player) {
         SasukeNetwork.summon(player);
+        SasukeNetwork.flame(player.serverLevel(), player.position().add(0, 1, 0), 3.0F, -1, 10);
         Vec3 center = player.getBoundingBox().getCenter();
         for (Entity target : player.level().getEntities(player, player.getBoundingBox().inflate(3), entity -> validTarget(player, entity))) {
             if (target.getBoundingBox().distanceToSqr(center) > 9 || !player.hasLineOfSight(target)) continue;
@@ -718,7 +725,7 @@ public final class CombatController {
         if (--state.shieldHits == 0) {
             clear(player, state);
             var patch = EpicFightCapabilities.getEntityPatch(player, ServerPlayerPatch.class);
-            if (patch != null) patch.playAnimationSynchronized(SasukeAnimations.player("idle"), 0F);
+            if (patch != null) restoreMovementAnimation(player, patch);
         }
     }
 }

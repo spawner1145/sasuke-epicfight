@@ -7,6 +7,7 @@ group = 'dev.sasuke'
 version = '0.1.0'
 base { archivesName = 'sasuke-epicfight' }
 java { sourceCompatibility = targetCompatibility = JavaVersion.VERSION_17 }
+if (project.hasProperty('visualTest')) sourceSets.main.java.srcDir('tools/visual-test')
 minecraft {
     mappings channel: 'official', version: '1.20.1'
     copyIdeResources = true
@@ -17,6 +18,10 @@ minecraft {
         }
         client {
             workingDirectory project.file('run')
+            if (project.hasProperty('visualTest')) {
+                property 'sasuke.visualTest', 'true'
+                args '--width', '1440', '--height', '900'
+            }
             mods { sasuke_epicfight { source sourceSets.main } }
         }
         server {
@@ -37,4 +42,7 @@ dependencies {
     runtimeOnly fg.deobf("local:cloth_config:${providers.gradleProperty('cloth_config_version').get()}")
 }
 tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8'; options.release = 17 }
-jar { finalizedBy 'reobfJar' }
+jar {
+    exclude 'dev/sasuke/VisualTest*'
+    finalizedBy 'reobfJar'
+}
