@@ -69,7 +69,7 @@ public final class CombatVisuals {
                 }
                 case "dash_spin_slash" -> spin(event, buffers, patch, animation, model, time, origin, BlackFlameVisuals.empowered(entity.getId()));
                 case "draw_to_side" -> bladeTrail(event, buffers, patch, animation, model, time, 0.0F, 0.85F,
-                    window(time, 0.0F, 0.85F, 0.10F), 0.28F);
+                    window(time, 0.0F, 0.85F, 0.10F), 0.28F, false);
                 case "sheathe_flourish" -> sheathe(event, buffers, patch, animation, model, time);
                 case "perfect_parry" -> {
                     float alpha = window(time, 0.02F, 0.10F, 0.15F);
@@ -78,7 +78,7 @@ public final class CombatVisuals {
                 default -> { }
             }
         }
-        for (String texture : new String[]{"slash_trail", "kick_air", "white", "glint", "ring", "halo", "dust"}) {
+        for (String texture : new String[]{"slash_trail", "black_slash_trail", "kick_air", "white", "glint", "ring", "halo", "dust"}) {
             buffers.endBatch(EffectGeometry.type(texture));
         }
     }
@@ -154,7 +154,7 @@ public final class CombatVisuals {
             LivingEntityPatch<?> patch, StaticAnimation animation, OpenMatrix4f model, float time, Vec3 origin, boolean black) {
         float alpha = window(time, 0.30F, 0.94F, 0.13F);
         if (alpha <= 0) return;
-        bladeTrail(event, buffers, patch, animation, model, time, 0.30F, 0.94F, alpha, 0.28F);
+        bladeTrail(event, buffers, patch, animation, model, time, 0.30F, 0.94F, alpha, 0.28F, black);
         Vec3 pivot = joint(patch, animation, model, "Chest", Vec3.ZERO, Math.min(time, 0.94F));
         dust(event, buffers, origin, time - 0.3F, alpha, 2.7F);
         if (black) BlackFlameVisuals.spinEmbers(event, pivot, time, alpha);
@@ -162,7 +162,7 @@ public final class CombatVisuals {
 
     private static void bladeTrail(RenderLevelStageEvent event, MultiBufferSource.BufferSource buffers,
             LivingEntityPatch<?> patch, StaticAnimation animation, OpenMatrix4f model, float time,
-            float start, float end, float alpha, float history) {
+            float start, float end, float alpha, float history, boolean black) {
         float head = Math.min(time, end);
         float tail = Math.max(start, head - history);
         Vec3[] starts = new Vec3[28];
@@ -172,7 +172,7 @@ public final class CombatVisuals {
             starts[index] = joint(patch, animation, model, "Tool_R", new Vec3(-0.005, -0.0177, 0.0898), sample);
             ends[index] = joint(patch, animation, model, "Tool_R", BLADE_TIP, sample);
         }
-        var trail = buffers.getBuffer(EffectGeometry.type("slash_trail"));
+        var trail = buffers.getBuffer(EffectGeometry.type(black ? "black_slash_trail" : "slash_trail"));
         for (int index = 1; index < starts.length; index++) {
             float from = (index - 1F) / (starts.length - 1F);
             float to = index / (starts.length - 1F);
@@ -187,7 +187,7 @@ public final class CombatVisuals {
     private static void sheathe(RenderLevelStageEvent event, MultiBufferSource.BufferSource buffers,
             LivingEntityPatch<?> patch, StaticAnimation animation, OpenMatrix4f model, float time) {
         float trailAlpha = window(time, 0.0F, 97F / 60F, 0.08F);
-        if (trailAlpha > 0) bladeTrail(event, buffers, patch, animation, model, time, 0.0F, 97F / 60F, trailAlpha, 0.34F);
+        if (trailAlpha > 0) bladeTrail(event, buffers, patch, animation, model, time, 0.0F, 97F / 60F, trailAlpha, 0.34F, false);
         float flick = window(time, 0.37F, 0.54F, 0.08F);
         if (flick > 0) {
             Vec3 grip = joint(patch, animation, model, "Tool_R", Vec3.ZERO, time);
