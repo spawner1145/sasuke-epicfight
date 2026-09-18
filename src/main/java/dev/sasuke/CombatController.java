@@ -62,6 +62,7 @@ public final class CombatController {
         long comboExpires;
         long comboInputUntil;
         Vec3 comboGrip = Vec3.ZERO;
+        boolean comboGrabbed;
         boolean basicTriggered;
         int shieldHits;
         long skeletonUntil;
@@ -209,6 +210,7 @@ public final class CombatController {
                     if (distance < firstDistance) { firstDistance = distance; firstGrab = target; }
                 }
             }
+            state.comboGrabbed = firstGrab != null;
             if (firstGrab != null) {
                 firstGrab.stopRiding();
                 state.captured.add(firstGrab);
@@ -458,7 +460,7 @@ public final class CombatController {
             if (state.spirit == null || !state.spirit.isAlive()) { clear(player, state); return; }
             Vec3 grip = state.comboGrip;
             state.captured.removeIf(entity -> !validTarget(player, entity) || entity.level() != player.level() || entity.position().distanceToSqr(player.position()) > 144);
-            if (elapsed >= 22 && elapsed < COMBO_BURST_END && state.captured.isEmpty()) {
+            if (elapsed >= 22 && !state.comboGrabbed) {
                 state.phase = Phase.COMBO_RECOVERY;
                 state.began = now;
                 state.until = now + 14;
