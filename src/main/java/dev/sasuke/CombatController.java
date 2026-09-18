@@ -215,12 +215,6 @@ public final class CombatController {
                 if (firstGrab instanceof LivingEntity living) ParalysisController.capture(living);
                 damage(player, firstGrab, 16F);
             }
-            if (state.captured.stream().noneMatch(target -> validTarget(player, target))) {
-                clear(player, state);
-                restoreMovementAnimation(player, patch);
-                persist(player, state);
-                return;
-            }
             start(player, state, Phase.COMBO, "amaterasu_combo", 83);
             persist(player, state);
             return;
@@ -464,9 +458,13 @@ public final class CombatController {
             if (state.spirit == null || !state.spirit.isAlive()) { clear(player, state); return; }
             Vec3 grip = state.comboGrip;
             state.captured.removeIf(entity -> !validTarget(player, entity) || entity.level() != player.level() || entity.position().distanceToSqr(player.position()) > 144);
-            if (elapsed < COMBO_BURST_END && state.captured.isEmpty()) {
-                clear(player, state);
-                restoreMovementAnimation(player, patch);
+            if (elapsed >= 22 && elapsed < COMBO_BURST_END && state.captured.isEmpty()) {
+                state.phase = Phase.COMBO_RECOVERY;
+                state.began = now;
+                state.until = now + 14;
+                patch.playAnimationSynchronized(SasukeAnimations.player("amaterasu_combo"), -3.4F);
+                state.spirit.animate("combo_retract");
+                SasukeNetwork.status(player, state);
                 return;
             }
             if (elapsed == 22) {
@@ -509,6 +507,10 @@ public final class CombatController {
                 }
                 case DASH -> start(player, state, Phase.SHEATHE, "sheathe_flourish", 50);
                 case SHEATHE -> clear(player, state);
+                case COMBO_RECOVERY -> {
+                    clear(player, state);
+                    restoreMovementAnimation(player, patch);
+                }
                 case AMATERASU_ONE -> {
                     state.phase = Phase.SECOND_READY;
                     state.until = now + READY_WINDOW;

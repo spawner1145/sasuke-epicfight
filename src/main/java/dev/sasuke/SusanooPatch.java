@@ -13,9 +13,11 @@ public class SusanooPatch extends VFXEntityPatch<SusanooEntity> {
         if (original.revision() == 0) return;
         if (revision != original.revision()) {
             revision = original.revision();
-            var animation = SasukeAnimations.SPIRIT.get(original.action());
+            boolean retract = original.action().equals("combo_retract");
+            var animation = SasukeAnimations.SPIRIT.get(retract ? "amaterasu_combo" : original.action());
             if (animation != null) {
-                animator.playAnimationInstantly(animation);
+                if (retract) animator.playAnimation(animation, -3.4F);
+                else animator.playAnimationInstantly(animation);
             }
         }
         animator.tick();
