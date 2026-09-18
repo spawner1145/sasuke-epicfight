@@ -215,6 +215,12 @@ public final class CombatController {
                 if (firstGrab instanceof LivingEntity living) ParalysisController.capture(living);
                 damage(player, firstGrab, 16F);
             }
+            if (state.captured.stream().noneMatch(target -> validTarget(player, target))) {
+                clear(player, state);
+                restoreMovementAnimation(player, patch);
+                persist(player, state);
+                return;
+            }
             start(player, state, Phase.COMBO, "amaterasu_combo", 83);
             persist(player, state);
             return;
@@ -458,13 +464,12 @@ public final class CombatController {
             if (state.spirit == null || !state.spirit.isAlive()) { clear(player, state); return; }
             Vec3 grip = state.comboGrip;
             state.captured.removeIf(entity -> !validTarget(player, entity) || entity.level() != player.level() || entity.position().distanceToSqr(player.position()) > 144);
+            if (elapsed < COMBO_BURST_END && state.captured.isEmpty()) {
+                clear(player, state);
+                restoreMovementAnimation(player, patch);
+                return;
+            }
             if (elapsed == 22) {
-                if (state.captured.isEmpty()) {
-                    if (state.spirit != null) state.spirit.dissolve();
-                    state.spirit = null;
-                    start(player, state, Phase.COMBO_RECOVERY, "draw_to_guard", 10);
-                    return;
-                }
                 SasukeNetwork.burst(player, grip, -1.8F, true);
             }
             for (Entity target : state.captured) {
