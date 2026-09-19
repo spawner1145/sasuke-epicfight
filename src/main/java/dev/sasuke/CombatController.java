@@ -36,6 +36,7 @@ public final class CombatController {
     public static final int READY_WINDOW = 60;
     public static final int SUSANOO_READY_WINDOW = 100;
     public static final int SHEATHE_ATTACK_WINDOW = 22;
+    private static final int BASIC_COMBO_WINDOW = 4; // 0.2 seconds at 20 ticks/second.
     public static final float BASE_ATTACK_DAMAGE = 12F;
     private static final int COMBO_BURST_START = 25;
     private static final int COMBO_BURST_END = 65;
@@ -66,6 +67,7 @@ public final class CombatController {
         long lastBasicInput = Long.MIN_VALUE / 2;
         Vec3 basicSheatheAnchor = Vec3.ZERO;
         long comboInputUntil;
+        long reverseFlameInputUntil;
         Vec3 comboGrip = Vec3.ZERO;
         boolean comboGrabbed;
         boolean basicTriggered;
@@ -225,12 +227,13 @@ public final class CombatController {
             restoreMovementAnimation(player, patch);
         }
         if (input.key() == 1 && state.phase == Phase.AMATERASU_TWO && cooldownReady(player, now, state.firstReady)) {
-            state.firstReady = now + SUSANOO_COOLDOWN;
-            state.secondReady = now + AMATERASU_SECOND_COOLDOWN;
-            BlackFlameController.aura(player);
-            summon(player, state, false);
-            combinedSummonBurst(player);
-            persist(player, state);
+            summonWithBlackFlame(player, state, now);
+            return;
+        }
+        // While stage two is available, allow the reverse chord as well.
+        // Defer the ordinary summon briefly so the two orders produce one burst.
+        if (input.key() == 1 && state.phase == Phase.SECOND_READY && cooldownReady(player, now, state.firstReady)) {
+            if (state.reverseFlameInputUntil == 0) state.reverseFlameInputUntil = now + 6;
             return;
         }
         if (input.key() == 3) {
@@ -266,6 +269,10 @@ public final class CombatController {
             return;
         }
         if (input.key() == 2 && state.phase == Phase.SECOND_READY) {
+            if (now < state.reverseFlameInputUntil && cooldownReady(player, now, state.firstReady)) {
+                summonWithBlackFlame(player, state, now);
+                return;
+            }
             Vec3 forward = state.direction;
             Vec3 left = new Vec3(forward.z, 0, -forward.x);
             Vec3 direction = forward.scale(input.forward()).add(left.scale(input.left()));
@@ -305,6 +312,17 @@ public final class CombatController {
         player.getPersistentData().putLong("sasukeFirstReady", state.firstReady);
         player.getPersistentData().putLong("sasukeSecondReady", state.secondReady);
         SasukeNetwork.status(player, state);
+    }
+
+    private static void summonWithBlackFlame(ServerPlayer player, State state, long now) {
+        state.reverseFlameInputUntil = 0;
+        state.comboInputUntil = 0;
+        state.firstReady = now + SUSANOO_COOLDOWN;
+        state.secondReady = now + AMATERASU_SECOND_COOLDOWN;
+        BlackFlameController.aura(player);
+        summon(player, state, false);
+        combinedSummonBurst(player);
+        persist(player, state);
     }
 
     private static void restoreMovementAnimation(ServerPlayer player, ServerPlayerPatch patch) {
@@ -378,7 +396,7 @@ public final class CombatController {
                     state.comboExpires = 0;
                     for (String name : new String[]{"1a", "2a", "3a", "4a1", "4a2", "4a3"}) {
                         if (action.getAnimation().equals(SasukeAnimations.ATTACKS.get(name))) {
-                            state.comboExpires = player.level().getGameTime() + (SasukeAnimations.duration(name) + 2) / 3 + 10;
+                            state.comboExpires = player.level().getGameTime() + (SasukeAnimations.duration(name) + 2) / 3 + BASIC_COMBO_WINDOW;
                             break;
                         }
                     }
@@ -425,6 +443,19 @@ public final class CombatController {
             });
         }
         long now = player.level().getGameTime();
+        if (state.reverseFlameInputUntil != 0) {
+            if (state.phase != Phase.SECOND_READY || !equipped(player) || !patch.isEpicFightMode()
+                    || patch.getEntityState().hurt() || ParalysisController.active(player)) {
+                state.reverseFlameInputUntil = 0;
+            } else if (now >= state.reverseFlameInputUntil) {
+                state.reverseFlameInputUntil = 0;
+                if (cooldownReady(player, now, state.firstReady)) {
+                    state.firstReady = now + SUSANOO_COOLDOWN;
+                    summon(player, state);
+                    persist(player, state);
+                }
+            }
+        }
         if (patch.getEntityState().hurt() || ParalysisController.active(player)) {
             state.basicSheatheAt = -1;
             state.comboExpires = 0;
@@ -718,6 +749,7 @@ public final class CombatController {
         if (speed != null) speed.removeModifier(SUSANOO_SPEED);
         state.comboInputUntil = 0;
         state.basicSheatheAt = -1;
+        state.reverseFlameInputUntil = 0;
         state.shieldHits = 0;
         state.swept.clear();
         state.specialUntil = 0;
