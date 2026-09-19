@@ -68,6 +68,8 @@ public final class CombatController {
         Vec3 basicSheatheAnchor = Vec3.ZERO;
         long comboInputUntil;
         long reverseFlameInputUntil;
+        int flameVoice = 1;
+        long secondVoiceAt = -1;
         Vec3 comboGrip = Vec3.ZERO;
         boolean comboGrabbed;
         boolean basicTriggered;
@@ -226,7 +228,7 @@ public final class CombatController {
             clear(player, state);
             restoreMovementAnimation(player, patch);
         }
-        if (input.key() == 1 && state.phase == Phase.AMATERASU_TWO && cooldownReady(player, now, state.firstReady)) {
+        if (input.key() == 1 && state.phase == Phase.AMATERASU_TWO && now - state.began < 6 && cooldownReady(player, now, state.firstReady)) {
             summonWithBlackFlame(player, state, now);
             return;
         }
@@ -263,6 +265,7 @@ public final class CombatController {
                 state.captured.add(firstGrab);
                 if (firstGrab instanceof LivingEntity living) ParalysisController.capture(living);
                 damage(player, firstGrab, 20F);
+                SasukeNetwork.comboCg(player, firstGrab);
             }
             start(player, state, Phase.COMBO, "amaterasu_combo", 83);
             persist(player, state);
@@ -285,6 +288,7 @@ public final class CombatController {
             state.impact = destination;
             state.secondReady = now + AMATERASU_SECOND_COOLDOWN;
             start(player, state, Phase.AMATERASU_TWO, "amaterasu_2", 24);
+            state.secondVoiceAt = now + 6;
             persist(player, state);
             return;
         }
@@ -297,6 +301,8 @@ public final class CombatController {
             state.comboInputUntil = now + 6;
         } else if (input.key() == 2 && cooldownReady(player, now, state.secondReady) && player.onGround()) {
             state.secondReady = now + AMATERASU_COOLDOWN;
+            state.flameVoice = CombatAudio.next(player, "flame", 3);
+            CombatAudio.play(player, "flame_1_" + state.flameVoice);
             state.direction = horizontal(player);
             state.origin = state.impact = player.position();
             state.waveStep = 0;
@@ -316,6 +322,7 @@ public final class CombatController {
 
     private static void summonWithBlackFlame(ServerPlayer player, State state, long now) {
         state.reverseFlameInputUntil = 0;
+        state.secondVoiceAt = -1;
         state.comboInputUntil = 0;
         state.firstReady = now + SUSANOO_COOLDOWN;
         state.secondReady = now + AMATERASU_SECOND_COOLDOWN;
@@ -390,6 +397,11 @@ public final class CombatController {
             });
             patch.getEventListener().addEventListener(EventType.ACTION_EVENT_SERVER, LISTENER, action -> {
                 state.basicSheatheAt = -1;
+                if (equipped(player)) {
+                    for (String name : new String[]{"1a", "2a", "3a", "4a1", "4a2", "4a3", "dash_spin_slash", "basic_sheathe", "sheathe_flourish"}) {
+                        if (action.getAnimation().equals(SasukeAnimations.player(name))) { CombatAudio.action(player, name); break; }
+                    }
+                }
                 if (action.getAnimation().equals(SasukeAnimations.player("basic_sheathe"))) return;
                 state.basic = "";
                 if (!state.specialAttack) {
@@ -435,6 +447,12 @@ public final class CombatController {
                 else {
                     var data = patch.getSkill(yesman.epicfight.skill.SkillSlots.BASIC_ATTACK).getDataManager();
                     int counter = data.getDataValue(yesman.epicfight.skill.SkillDataKeys.COMBO_COUNTER.get());
+                    if (Math.floorMod(player.getPersistentData().getInt("sasukeComboStage"), 3) == 2
+                            && !LightningController.hasAnchor(player)) {
+                        player.getPersistentData().putInt("sasukeComboStage", 0);
+                        counter = Math.floorMod(counter, 4);
+                        data.setData(yesman.epicfight.skill.SkillDataKeys.COMBO_COUNTER.get(), counter);
+                    }
                     if (counter == 0 || player.level().getGameTime() >= state.comboExpires) {
                         int stage = Math.floorMod(player.getPersistentData().getInt("sasukeComboStage"), 3);
                         data.setData(yesman.epicfight.skill.SkillDataKeys.COMBO_COUNTER.get(), stage * 4);
@@ -443,6 +461,14 @@ public final class CombatController {
             });
         }
         long now = player.level().getGameTime();
+        if (state.secondVoiceAt >= 0) {
+            if (state.phase != Phase.AMATERASU_TWO || !equipped(player) || patch.getEntityState().hurt()
+                    || ParalysisController.active(player)) state.secondVoiceAt = -1;
+            else if (now >= state.secondVoiceAt) {
+                CombatAudio.play(player, "flame_2_" + state.flameVoice);
+                state.secondVoiceAt = -1;
+            }
+        }
         if (state.reverseFlameInputUntil != 0) {
             if (state.phase != Phase.SECOND_READY || !equipped(player) || !patch.isEpicFightMode()
                     || patch.getEntityState().hurt() || ParalysisController.active(player)) {
@@ -689,6 +715,7 @@ public final class CombatController {
 
     private static void summon(ServerPlayer player, State state, boolean burst) {
         if (state.spirit != null) state.spirit.dissolve();
+        CombatAudio.play(player, "susanoo_" + CombatAudio.next(player, "susanoo", 2));
         state.shieldHits = 3;
         state.skeletonUntil = player.level().getGameTime() + 12 + SUSANOO_READY_WINDOW;
         state.spirit = new SusanooEntity(SasukeMod.SUSANOO.get(), player.level());
@@ -749,6 +776,7 @@ public final class CombatController {
         if (speed != null) speed.removeModifier(SUSANOO_SPEED);
         state.comboInputUntil = 0;
         state.basicSheatheAt = -1;
+        state.secondVoiceAt = -1;
         state.reverseFlameInputUntil = 0;
         state.shieldHits = 0;
         state.swept.clear();

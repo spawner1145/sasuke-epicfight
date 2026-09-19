@@ -99,6 +99,7 @@ public final class SasukeClient {
         var mc = Minecraft.getInstance();
         if (lastLevel != mc.level) {
             lastLevel = mc.level;
+            if (mc.level != null) ComboCg.preload();
             SasukeEffects.clear();
             status = new SasukeNetwork.Status(0, 0, 0);
         }

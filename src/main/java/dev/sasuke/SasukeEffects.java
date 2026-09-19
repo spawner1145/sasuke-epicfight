@@ -168,8 +168,6 @@ public final class SasukeEffects {
             case 0, 1, 2, 7 -> BlackFlameVisuals.add(message);
             case 5, 6, 9 -> {
                 ElectricVisuals.add(message);
-                if (message.kind() == 9) mc.level.playLocalSound(message.position().x, message.position().y, message.position().z,
-                    net.minecraft.sounds.SoundEvents.GENERIC_EXPLODE, net.minecraft.sounds.SoundSource.PLAYERS, 0.8F, 1.3F, false);
             }
             case 8 -> {
                 var target = mc.level.getEntity(message.entityId());

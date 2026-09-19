@@ -56,7 +56,7 @@ public final class LightningController {
         Anchor anchor = new Anchor();
         anchor.sword = sword;
         anchor.fracture = fractureCenter;
-        anchor.expires = player.level().getGameTime() + 600;
+        anchor.expires = player.level().getGameTime() + 10 * 20;
         ANCHORS.put(player, anchor);
         strike(player, sword.position());
     }
@@ -67,9 +67,27 @@ public final class LightningController {
         return list;
     }
 
+    public static boolean hasAnchor(ServerPlayer player) {
+        Anchor anchor = ANCHORS.get(player);
+        return anchor != null && anchor.sword.isAlive() && anchor.sword.level() == player.level()
+            && player.level().getGameTime() < anchor.expires && anchor.orb == null;
+    }
+
+    private static void resetFourthCycle(ServerPlayer player) {
+        if (Math.floorMod(player.getPersistentData().getInt("sasukeComboStage"), 3) != 2) return;
+        player.getPersistentData().putInt("sasukeComboStage", 0);
+        var patch = yesman.epicfight.world.capabilities.EpicFightCapabilities.getEntityPatch(player,
+            yesman.epicfight.world.capabilities.entitypatch.player.ServerPlayerPatch.class);
+        if (patch != null) {
+            var data = patch.getSkill(yesman.epicfight.skill.SkillSlots.BASIC_ATTACK).getDataManager();
+            var key = yesman.epicfight.skill.SkillDataKeys.COMBO_COUNTER.get();
+            data.setData(key, Math.floorMod(data.getDataValue(key), 4));
+        }
+    }
+
     public static void launch(ServerPlayer player) {
         Anchor anchor = ANCHORS.get(player);
-        if (anchor != null && anchor.sword.level() == player.level() && anchor.orb == null) {
+        if (hasAnchor(player)) {
             anchor.orb = player.position().add(0, 0.9, 0);
             SasukeNetwork.flame(player.serverLevel(), anchor.orb, 0.42F, player.getId(), 6);
         }
@@ -84,7 +102,7 @@ public final class LightningController {
             var player = entry.getKey();
             var anchor = entry.getValue();
             if (!player.isAlive() || player.hasDisconnected() || player.level() != anchor.sword.level() || !anchor.sword.isAlive() || player.level().getGameTime() >= anchor.expires) {
-                anchor.sword.discard(); iterator.remove(); continue;
+                anchor.sword.discard(); iterator.remove(); resetFourthCycle(player); continue;
             }
             if (player.level().getGameTime() % 10 == 0) {
                 LevelUtil.circleSlamFracture(player, player.level(), anchor.fracture, 1.1D, true, true);
@@ -116,6 +134,7 @@ public final class LightningController {
     }
 
     private static void strike(ServerPlayer player, Vec3 position) {
+        CombatAudio.playAt(player, "lightning_burst", position);
         SasukeNetwork.flame(player.serverLevel(), position, 2.8F, player.getId(), 9);
         for (var target : player.level().getEntities(player, new AABB(position, position).inflate(2.8), entity -> CombatController.validTarget(player, entity))) {
             if (target.getBoundingBox().distanceToSqr(position) <= 7.84 && player.level().clip(new ClipContext(position, target.getBoundingBox().getCenter(), ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player)).getType() == HitResult.Type.MISS) {

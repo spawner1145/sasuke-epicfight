@@ -1,0 +1,178 @@
+{
+  "attack_1": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:attack_1",
+        "stream": true
+      }
+    ]
+  },
+  "attack_2": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:attack_2",
+        "stream": true
+      }
+    ]
+  },
+  "attack_3": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:attack_3",
+        "stream": true
+      }
+    ]
+  },
+  "attack_41": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:attack_41",
+        "stream": true
+      }
+    ]
+  },
+  "attack_42": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:attack_42",
+        "stream": true
+      }
+    ]
+  },
+  "lightning_burst": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:lightning_burst",
+        "stream": true
+      }
+    ]
+  },
+  "basic_sheathe": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:basic_sheathe",
+        "stream": true
+      }
+    ]
+  },
+  "spin_sheathe": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:spin_sheathe",
+        "stream": true
+      }
+    ]
+  },
+  "combo_hit": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:combo_hit",
+        "stream": true
+      }
+    ]
+  },
+  "attack_43_1": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:attack_43_1",
+        "stream": true
+      }
+    ]
+  },
+  "flame_1_1": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:flame_1_1",
+        "stream": true
+      }
+    ]
+  },
+  "flame_2_1": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:flame_2_1",
+        "stream": true
+      }
+    ]
+  },
+  "attack_43_2": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:attack_43_2",
+        "stream": true
+      }
+    ]
+  },
+  "flame_1_2": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:flame_1_2",
+        "stream": true
+      }
+    ]
+  },
+  "flame_2_2": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:flame_2_2",
+        "stream": true
+      }
+    ]
+  },
+  "attack_43_3": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:attack_43_3",
+        "stream": true
+      }
+    ]
+  },
+  "flame_1_3": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:flame_1_3",
+        "stream": true
+      }
+    ]
+  },
+  "flame_2_3": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:flame_2_3",
+        "stream": true
+      }
+    ]
+  },
+  "susanoo_1": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:susanoo_1",
+        "stream": true
+      }
+    ]
+  },
+  "spin_1": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:spin_1",
+        "stream": true
+      }
+    ]
+  },
+  "susanoo_2": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:susanoo_2",
+        "stream": true
+      }
+    ]
+  },
+  "spin_2": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:spin_2",
+        "stream": true
+      }
+    ]
+  }
+}

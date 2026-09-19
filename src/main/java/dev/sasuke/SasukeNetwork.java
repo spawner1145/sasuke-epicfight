@@ -13,7 +13,8 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class SasukeNetwork {
-    public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(SasukeMod.id("combat"), () -> "5", "5"::equals, "5"::equals);
+    public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(SasukeMod.id("combat"), () -> "8", "8"::equals, "8"::equals);
+    public record ComboMovie(double startTick, int casterId, boolean showVideo) {}
     public record Input(int key, int forward, int left) {}
     public record Status(int phase, int firstCooldown, int secondCooldown) {}
     public record Burst(Vec3 position, float radius, int seed, boolean radial) {}
@@ -21,6 +22,11 @@ public final class SasukeNetwork {
     public record Flame(Vec3 position, float radius, int entityId, int kind) {}
 
     public static void register() {
+        CHANNEL.registerMessage(5, ComboMovie.class, (message, buffer) -> { buffer.writeDouble(message.startTick()); buffer.writeVarInt(message.casterId()); buffer.writeBoolean(message.showVideo()); }, buffer -> new ComboMovie(buffer.readDouble(), buffer.readVarInt(), buffer.readBoolean()),
+            (message, supplier) -> {
+                supplier.get().enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> ComboCg.play(message)));
+                supplier.get().setPacketHandled(true);
+            }, Optional.of(NetworkDirection.PLAY_TO_CLIENT));
         CHANNEL.registerMessage(4, Flame.class,
             (message, buffer) -> { buffer.writeDouble(message.position.x); buffer.writeDouble(message.position.y); buffer.writeDouble(message.position.z); buffer.writeFloat(message.radius); buffer.writeInt(message.entityId); buffer.writeByte(message.kind); },
             buffer -> new Flame(new Vec3(buffer.readDouble(), buffer.readDouble(), buffer.readDouble()), buffer.readFloat(), buffer.readInt(), buffer.readByte()),
@@ -60,6 +66,16 @@ public final class SasukeNetwork {
                 supplier.get().enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> SasukeEffects.summon(message.position)));
                 supplier.get().setPacketHandled(true);
             }, Optional.of(NetworkDirection.PLAY_TO_CLIENT));
+    }
+
+    public static void comboCg(ServerPlayer caster, net.minecraft.world.entity.Entity target) {
+        double start = caster.level().getGameTime() + (0.08 + 35.0 / 60.0) * 20.0;
+        for (ServerPlayer listener : caster.serverLevel().players()) {
+            boolean video = listener == caster || listener == target;
+            if (video || listener.distanceToSqr(caster) <= 4096) {
+                CHANNEL.send(PacketDistributor.PLAYER.with(() -> listener), new ComboMovie(start, caster.getId(), video));
+            }
+        }
     }
 
     public static void status(ServerPlayer player, CombatController.State state) {
