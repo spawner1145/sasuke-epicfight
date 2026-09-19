@@ -35,7 +35,7 @@ public final class CombatController {
     public static final int AMATERASU_SECOND_COOLDOWN = 15 * 20;
     public static final int READY_WINDOW = 60;
     public static final int SUSANOO_READY_WINDOW = 100;
-    public static final int SHEATHE_ATTACK_WINDOW = 22;
+    public static final int SHEATHE_ATTACK_WINDOW = 13; // 0.65s; 4a1 lasts 36/60 = 0.60s.
     private static final int BASIC_COMBO_WINDOW = 4; // 0.2 seconds at 20 ticks/second.
     public static final float BASE_ATTACK_DAMAGE = 12F;
     private static final int COMBO_BURST_START = 25;
@@ -75,6 +75,9 @@ public final class CombatController {
         boolean basicTriggered;
         int shieldHits;
         long skeletonUntil;
+        long summonAt = -1;
+        boolean summonFlame;
+        boolean startingAction;
         final List<LivingEntity> swept = new ArrayList<>();
         SusanooEntity spirit;
         ServerPlayerPatch installedPatch;
@@ -130,8 +133,7 @@ public final class CombatController {
     public static boolean superArmor(LivingEntity target) {
         if (!(target instanceof ServerPlayer player) || captured(target)) return false;
         State state = STATES.get(player);
-        return state != null && equipped(player) && (state.phase == Phase.COMBO || state.phase == Phase.COMBO_RECOVERY
-            || state.spirit != null && state.spirit.isAlive() && !state.spirit.dissolving());
+        return state != null && equipped(player) && (state.spirit != null && state.spirit.isAlive() && !state.spirit.dissolving());
     }
 
     public static void interruptForCapture(LivingEntity target) {
@@ -251,22 +253,7 @@ public final class CombatController {
             Vec3 facing = horizontal(player);
             Vec3 center = player.position().add(facing.scale(3)).add(0, 1.5, 0);
             state.comboGrip = center;
-            Entity firstGrab = null;
-            double firstDistance = Double.MAX_VALUE;
-            for (Entity target : player.level().getEntities(player, new AABB(center, center).inflate(4.5), entity -> validTarget(player, entity))) {
-                if (target.getBoundingBox().distanceToSqr(center) <= 20.25 && player.hasLineOfSight(target)) {
-                    double distance = target.getBoundingBox().distanceToSqr(center);
-                    if (distance < firstDistance) { firstDistance = distance; firstGrab = target; }
-                }
-            }
-            state.comboGrabbed = firstGrab != null;
-            if (firstGrab != null) {
-                firstGrab.stopRiding();
-                state.captured.add(firstGrab);
-                if (firstGrab instanceof LivingEntity living) ParalysisController.capture(living);
-                damage(player, firstGrab, 20F);
-                SasukeNetwork.comboCg(player, firstGrab);
-            }
+            state.comboGrabbed = false;
             start(player, state, Phase.COMBO, "amaterasu_combo", 83);
             persist(player, state);
             return;
@@ -326,9 +313,7 @@ public final class CombatController {
         state.comboInputUntil = 0;
         state.firstReady = now + SUSANOO_COOLDOWN;
         state.secondReady = now + AMATERASU_SECOND_COOLDOWN;
-        BlackFlameController.aura(player);
         summon(player, state, false);
-        combinedSummonBurst(player);
         persist(player, state);
     }
 
@@ -350,7 +335,9 @@ public final class CombatController {
         state.anchor = player.position();
         var patch = EpicFightCapabilities.getEntityPatch(player, ServerPlayerPatch.class);
         patch.modifyLivingMotionByCurrentItem();
-        patch.playAnimationSynchronized(SasukeAnimations.player(animation), 0F);
+        state.startingAction = true;
+        try { patch.playAnimationSynchronized(SasukeAnimations.player(animation), 0F); }
+        finally { state.startingAction = false; }
         if (phase == Phase.DASH && state.spirit != null) {
             state.spirit.discard();
             state.spirit = null;
@@ -365,8 +352,7 @@ public final class CombatController {
         State state = state(player);
         var patch = EpicFightCapabilities.getEntityPatch(player, ServerPlayerPatch.class);
         if (patch == null) return;
-        if ((state.phase == Phase.AMATERASU_ONE || state.phase == Phase.SECOND_READY || state.phase == Phase.AMATERASU_TWO)
-            && state.spirit != null && player.level().getGameTime() >= state.skeletonUntil) {
+        if (state.spirit != null && player.level().getGameTime() >= state.skeletonUntil) {
             state.spirit.dissolve();
             state.spirit = null;
             state.shieldHits = 0;
@@ -396,6 +382,9 @@ public final class CombatController {
                 if (ParalysisController.active(player)) cast.setCanceled(true);
             });
             patch.getEventListener().addEventListener(EventType.ACTION_EVENT_SERVER, LISTENER, action -> {
+                if (!state.startingAction && state.phase != Phase.NORMAL && state.phase != Phase.READY
+                        && state.phase != Phase.SECOND_READY
+                        && !(state.phase == Phase.COMBO_RECOVERY && action.getAnimation().equals(SasukeAnimations.player("amaterasu_combo")))) cancelSkillMotion(player, state);
                 state.basicSheatheAt = -1;
                 if (equipped(player)) {
                     for (String name : new String[]{"1a", "2a", "3a", "4a1", "4a2", "4a3", "dash_spin_slash", "basic_sheathe", "sheathe_flourish"}) {
@@ -461,6 +450,8 @@ public final class CombatController {
             });
         }
         long now = player.level().getGameTime();
+        if (state.summonAt >= 0 && now >= state.summonAt && equipped(player)
+                && !patch.getEntityState().hurt() && !ParalysisController.active(player)) activateSkeleton(player, state);
         if (state.secondVoiceAt >= 0) {
             if (state.phase != Phase.AMATERASU_TWO || !equipped(player) || patch.getEntityState().hurt()
                     || ParalysisController.active(player)) state.secondVoiceAt = -1;
@@ -566,7 +557,8 @@ public final class CombatController {
         if (state.phase == Phase.AMATERASU_TWO && elapsed == 1) SasukeNetwork.burst(player, state.impact, -3.5F);
         if (state.phase == Phase.AMATERASU_TWO && elapsed == 10) erupt(player, state.impact, 3.5F, 30F);
         if (state.phase == Phase.COMBO) {
-            if (state.spirit == null || !state.spirit.isAlive()) { clear(player, state); return; }
+            if (elapsed == 6) captureCombo(player, state);
+            if ((state.spirit == null || !state.spirit.isAlive()) && state.summonAt < 0) { clear(player, state); return; }
             Vec3 grip = state.comboGrip;
             state.captured.removeIf(entity -> !validTarget(player, entity) || entity.level() != player.level() || entity.position().distanceToSqr(player.position()) > 144);
             if (elapsed >= 22 && !state.comboGrabbed) {
@@ -714,16 +706,63 @@ public final class CombatController {
     }
 
     private static void summon(ServerPlayer player, State state, boolean burst) {
-        if (state.spirit != null) state.spirit.dissolve();
         CombatAudio.play(player, "susanoo_" + CombatAudio.next(player, "susanoo", 2));
+        state.summonAt = player.level().getGameTime() + 6;
+        state.summonFlame = !burst;
+        start(player, state, Phase.DRAW, "draw_to_side", 12);
+    }
+
+    private static void activateSkeleton(ServerPlayer player, State state) {
+        state.summonAt = -1;
+        if (state.spirit != null) state.spirit.dissolve();
         state.shieldHits = 3;
-        state.skeletonUntil = player.level().getGameTime() + 12 + SUSANOO_READY_WINDOW;
+        state.skeletonUntil = player.level().getGameTime() + SUSANOO_READY_WINDOW;
         state.spirit = new SusanooEntity(SasukeMod.SUSANOO.get(), player.level());
         state.spirit.tame(player);
         state.spirit.setPos(player.position());
-        start(player, state, Phase.DRAW, "draw_to_side", 12);
         player.level().addFreshEntity(state.spirit);
-        if (burst) summonBurst(player);
+        state.spirit.animate(state.phase == Phase.COMBO ? "amaterasu_combo" : "draw_to_side");
+        if (state.summonFlame) {
+            BlackFlameController.aura(player);
+            combinedSummonBurst(player);
+        } else summonBurst(player);
+        state.summonFlame = false;
+    }
+
+    private static void cancelSkillMotion(ServerPlayer player, State state) {
+        state.summonAt = -1;
+        state.summonFlame = false;
+        state.captured.clear();
+        state.comboInputUntil = 0;
+        state.reverseFlameInputUntil = 0;
+        state.secondVoiceAt = -1;
+        state.queuedAttack = false;
+        state.basic = "";
+        state.basicSheatheAt = -1;
+        state.phase = Phase.NORMAL;
+        if (state.spirit != null && state.spirit.isAlive() && !state.spirit.dissolving()) state.spirit.animate("idle_sword_side");
+        var patch = EpicFightCapabilities.getEntityPatch(player, ServerPlayerPatch.class);
+        if (patch != null) patch.modifyLivingMotionByCurrentItem();
+        SasukeNetwork.status(player, state);
+    }
+
+    private static void captureCombo(ServerPlayer player, State state) {
+        Entity firstGrab = null;
+        double firstDistance = Double.MAX_VALUE;
+        for (Entity target : player.level().getEntities(player, new AABB(state.comboGrip, state.comboGrip).inflate(4.5), entity -> validTarget(player, entity))) {
+            if (target.getBoundingBox().distanceToSqr(state.comboGrip) <= 20.25 && player.hasLineOfSight(target)) {
+                double distance = target.getBoundingBox().distanceToSqr(state.comboGrip);
+                if (distance < firstDistance) { firstDistance = distance; firstGrab = target; }
+            }
+        }
+        state.comboGrabbed = firstGrab != null;
+        if (firstGrab != null) {
+            firstGrab.stopRiding();
+            state.captured.add(firstGrab);
+            if (firstGrab instanceof LivingEntity living) ParalysisController.capture(living);
+            damage(player, firstGrab, 20F);
+            SasukeNetwork.comboCg(player, firstGrab, state.began);
+        }
     }
 
     private static void combinedSummonBurst(ServerPlayer player) {
@@ -774,6 +813,8 @@ public final class CombatController {
         if (resistance != null) resistance.removeModifier(SUSANOO_KNOCKBACK);
         var speed = player.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED);
         if (speed != null) speed.removeModifier(SUSANOO_SPEED);
+        state.summonAt = -1;
+        state.summonFlame = false;
         state.comboInputUntil = 0;
         state.basicSheatheAt = -1;
         state.secondVoiceAt = -1;
@@ -786,6 +827,7 @@ public final class CombatController {
         state.captured.clear();
         state.queuedAttack = false;
         state.phase = Phase.NORMAL;
+        if (state.spirit != null && state.spirit.isAlive() && !state.spirit.dissolving()) state.spirit.animate("idle_sword_side");
         var patch = EpicFightCapabilities.getEntityPatch(player, ServerPlayerPatch.class);
         if (patch != null) patch.modifyLivingMotionByCurrentItem();
         SasukeNetwork.status(player, state);
@@ -841,7 +883,9 @@ public final class CombatController {
         var patch = EpicFightCapabilities.getEntityPatch(player, ServerPlayerPatch.class);
         boolean fourth = patch != null && patch.getAnimator().getPlayerFor(null).getAnimation().get().getRealAnimation().equals(SasukeAnimations.ATTACKS.get("4a1"))
             && !patch.getAnimator().getPlayerFor(null).isEnd();
-        if (state.phase == Phase.DASH || fourth) { event.setCanceled(true); return; }
+        boolean activeDash = state.phase == Phase.DASH && player.level().getGameTime() - state.began >= 6;
+        boolean activeFourth = fourth && patch.getAnimator().getPlayerFor(null).getElapsedTime() >= 10F / 60F;
+        if (activeDash || activeFourth) { event.setCanceled(true); return; }
     }
 
     @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.LOWEST)
@@ -850,7 +894,7 @@ public final class CombatController {
         State state = STATES.get(player);
         if (state == null) return;
         boolean skeletonProtected = state.shieldHits > 0 && state.spirit != null && state.spirit.isAlive() && !state.spirit.dissolving();
-        if (!superArmor(player) && skillBody(player) && event.getSource() instanceof SkillDamageSource) {
+        if (!superArmor(player) && skillBody(player) && skillDamage(event.getSource())) {
             clear(player, state);
             var patch = EpicFightCapabilities.getEntityPatch(player, ServerPlayerPatch.class);
             if (patch != null) patch.applyStun(yesman.epicfight.world.damagesource.StunType.SHORT, 0.25F);

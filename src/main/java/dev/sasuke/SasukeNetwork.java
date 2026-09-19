@@ -68,8 +68,8 @@ public final class SasukeNetwork {
             }, Optional.of(NetworkDirection.PLAY_TO_CLIENT));
     }
 
-    public static void comboCg(ServerPlayer caster, net.minecraft.world.entity.Entity target) {
-        double start = caster.level().getGameTime() + (0.08 + 35.0 / 60.0) * 20.0;
+    public static void comboCg(ServerPlayer caster, net.minecraft.world.entity.Entity target, long castTick) {
+        double start = castTick + (0.08 + 35.0 / 60.0) * 20.0;
         for (ServerPlayer listener : caster.serverLevel().players()) {
             boolean video = listener == caster || listener == target;
             if (video || listener.distanceToSqr(caster) <= 4096) {
