@@ -1,7 +1,8 @@
 # Ordinary attack sheathing
 
-All six ground basic attacks (1a, 2a, 3a, 4a1, 4a2, 4a3) share
-RecoveryAttackAnimation. Only natural completion queues basic_sheathe after a four-tick input grace period. Held attack input refreshes the grace period even when the current attack cannot
+Only 3a, 4a1, 4a2 and 4a3 queue ordinary sheathing; stopping after 1a or 2a does not.
+RecoveryAttackAnimation queues basic_sheathe only on natural completion of those
+four attacks, after a four-tick input grace period. Held attack input refreshes the grace period even when the current attack cannot
 yet be interrupted. A subsequent action cancels the queue, so chained attacks, skills and
 interruptions take priority. Walking, airborne state, item use and hurt/paralysis
 prevent the cosmetic recovery; movement or item use interrupts it after it starts.

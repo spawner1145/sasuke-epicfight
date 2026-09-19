@@ -18,7 +18,11 @@ public final class RecoveryAttackAnimation extends BasicAttackAnimation {
             yesman.epicfight.api.asset.AssetAccessor<? extends yesman.epicfight.api.animation.types.DynamicAnimation> next,
             boolean completed) {
         super.end(patch, next, completed);
-        if (completed && patch.getOriginal() instanceof net.minecraft.server.level.ServerPlayer player) {
+        boolean shouldSheathe = getAccessor().equals(SasukeAnimations.ATTACKS.get("3a"))
+            || getAccessor().equals(SasukeAnimations.ATTACKS.get("4a1"))
+            || getAccessor().equals(SasukeAnimations.ATTACKS.get("4a2"))
+            || getAccessor().equals(SasukeAnimations.ATTACKS.get("4a3"));
+        if (completed && shouldSheathe && patch.getOriginal() instanceof net.minecraft.server.level.ServerPlayer player) {
             CombatController.basicAttackEnded(player);
         }
     }
