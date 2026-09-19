@@ -35,7 +35,7 @@ public final class CombatController {
     public static final int AMATERASU_SECOND_COOLDOWN = 15 * 20;
     public static final int READY_WINDOW = 60;
     public static final int SUSANOO_READY_WINDOW = 100;
-    public static final int SHEATHE_ATTACK_WINDOW = 13; // 0.65s; 4a1 lasts 36/60 = 0.60s.
+    public static final int SHEATHE_ATTACK_WINDOW = 12; // 0.60s; 4a1 now lasts 0.60 / 1.10 seconds.
     private static final int BASIC_COMBO_WINDOW = 4; // 0.2 seconds at 20 ticks/second.
     public static final float BASE_ATTACK_DAMAGE = 12F;
     private static final int COMBO_BURST_START = 25;
@@ -459,7 +459,7 @@ public final class CombatController {
                     state.comboExpires = 0;
                     for (String name : new String[]{"1a", "2a", "3a", "4a1", "4a2", "4a3"}) {
                         if (action.getAnimation().equals(SasukeAnimations.ATTACKS.get(name))) {
-                            state.comboExpires = player.level().getGameTime() + (SasukeAnimations.duration(name) + 2) / 3 + BASIC_COMBO_WINDOW;
+                            state.comboExpires = player.level().getGameTime() + RecoveryAttackAnimation.durationTicks(SasukeAnimations.duration(name)) + BASIC_COMBO_WINDOW;
                             break;
                         }
                     }
@@ -672,12 +672,18 @@ public final class CombatController {
     private static void tickBasic(ServerPlayer player, State state) {
         int elapsed = (int)(player.level().getGameTime() - state.basicBegan);
         if (elapsed > 18 || state.basic.isEmpty()) return;
+        var patch = EpicFightCapabilities.getEntityPatch(player, ServerPlayerPatch.class);
+        if (patch == null) return;
+        var animationPlayer = patch.getAnimator().getPlayerFor(null);
+        if (!animationPlayer.getRealAnimation().equals(SasukeAnimations.ATTACKS.get(state.basic))
+                || animationPlayer.getAnimation().get().isLinkAnimation()) return;
+        float animationTicks = animationPlayer.getElapsedTime() * 20F;
         int end = switch (state.basic) { case "3a" -> 6; case "4a1", "4a2" -> 11; default -> 16; };
-        if (elapsed > end) return;
+        if (animationTicks > end) return;
         if (!state.basic.equals("4a2") && elapsed > 0 && elapsed % 3 == 0) SasukeNetwork.flame(player.serverLevel(), player.position(), 1F, player.getId(), 8);
         if (state.basic.equals("4a1") && elapsed % 2 == 0) SasukeNetwork.flame(player.serverLevel(), player.position().add(0, 1, 0), 0.9F, player.getId(), 5);
         int trigger = state.basic.equals("4a2") ? 7 : 14;
-        if (!state.basicTriggered && elapsed >= trigger) {
+        if (!state.basicTriggered && animationTicks >= trigger) {
             state.basicTriggered = true;
             if (state.basic.equals("4a2")) LightningController.plant(player);
             if (state.basic.equals("4a3")) LightningController.launch(player);

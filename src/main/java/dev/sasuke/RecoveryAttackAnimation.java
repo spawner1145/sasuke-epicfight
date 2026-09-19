@@ -6,6 +6,18 @@ import yesman.epicfight.api.animation.types.BasicAttackAnimation;
 import yesman.epicfight.gameasset.Armatures;
 
 public final class RecoveryAttackAnimation extends BasicAttackAnimation {
+    public static final float PLAYBACK_SPEED = 1.10F;
+
+    static int durationTicks(int frames) {
+        return (int)Math.ceil(frames / (3.0 * PLAYBACK_SPEED));
+    }
+
+    @Override
+    public float getPlaySpeed(yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch<?> patch,
+            yesman.epicfight.api.animation.types.DynamicAnimation animation) {
+        return super.getPlaySpeed(patch, animation) * PLAYBACK_SPEED;
+    }
+
     public static final double MOVEMENT_SCALE = 2.15;
     public static final double FOURTH_FORWARD_DISTANCE = (4.645297 - 0.000946) * MOVEMENT_SCALE;
     public RecoveryAttackAnimation(float antic, float contact, float duration, AnimationAccessor<? extends BasicAttackAnimation> accessor) {
