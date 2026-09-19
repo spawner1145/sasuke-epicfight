@@ -2,6 +2,7 @@ from pathlib import Path
 import subprocess,json,imageio_ffmpeg
 f=imageio_ffmpeg.get_ffmpeg_exe();root=Path('src/main/resources/assets/sasuke_epicfight');out=root/'sounds';out.mkdir(exist_ok=True)
 m={'1a':'attack_1','2a':'attack_2','3a':'attack_3','4a1':'attack_41','4a2':'attack_42','雷球爆炸':'lightning_burst','普通收刀':'basic_sheathe','旋转斩收刀':'spin_sheathe','组合技命中':'combo_hit'}
+m['骨架受击']='susanoo_hurt'
 for i in range(1,4):
  m[f'4a3{i}']=f'attack_43_{i}';m[f'黑炎1{i}']=f'flame_1_{i}';m[f'黑炎2{i}']=f'flame_2_{i}'
 for i in range(1,3):m[f'须佐{i}']=f'susanoo_{i}';m[f'旋转斩{i}']=f'spin_{i}'

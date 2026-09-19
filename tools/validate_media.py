@@ -5,7 +5,7 @@ import imageio_ffmpeg
 root=Path(__file__).resolve().parents[1]
 a=root/'src/main/resources/assets/sasuke_epicfight'
 sounds=json.loads((a/'sounds.json').read_text())
-assert len(sounds)==22
+assert len(sounds)==23
 assert "combo_cg" not in sounds
 assert not (a/"sounds/combo_cg.ogg").exists()
 for entry in sounds.values():
@@ -21,4 +21,4 @@ with zipfile.ZipFile(root/'build/libs/sasuke-epicfight-0.1.0.jar') as jar:
  for p in [a/'sounds.json',*(a/'sounds').glob('*.ogg'),*(a/'textures/cg').glob('*.png')]:
   name=p.relative_to(root/'src/main/resources').as_posix()
   assert jar.read(name)==p.read_bytes(),name
-print('PASS: 22 decodable Vorbis sounds, 35 valid movie frames, identical packaged media')
+print('PASS: 23 decodable Vorbis sounds, 35 valid movie frames, identical packaged media')

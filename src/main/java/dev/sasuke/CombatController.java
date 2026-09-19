@@ -856,6 +856,7 @@ public final class CombatController {
             if (patch != null) patch.applyStun(yesman.epicfight.world.damagesource.StunType.SHORT, 0.25F);
         }
         if (!skeletonProtected) return;
+        CombatAudio.play(player, "susanoo_hurt");
         event.setAmount(event.getAmount() * 0.1F);
         if (--state.shieldHits == 0) {
             clear(player, state);

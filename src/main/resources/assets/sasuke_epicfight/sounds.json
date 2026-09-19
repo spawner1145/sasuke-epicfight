@@ -71,6 +71,14 @@
       }
     ]
   },
+  "susanoo_hurt": {
+    "sounds": [
+      {
+        "name": "sasuke_epicfight:susanoo_hurt",
+        "stream": true
+      }
+    ]
+  },
   "attack_43_1": {
     "sounds": [
       {
