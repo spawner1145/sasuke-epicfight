@@ -53,6 +53,12 @@ public final class SasukeWeapon {
             .collider(new yesman.epicfight.api.collider.MultiOBBCollider(9, 0.8D, 0.7D, 1.4D, 0D, 0D, -1.3D))
             .canBePlacedOffhand(false)
             .comboCounterHandler((cap, cause, patch, next, counter) -> {
+                // A cosmetic recovery is not a new combat action. EpicFight's
+                // action listener must not reset the combo when it begins.
+                if (SasukeAnimations.player("basic_sheathe").equals(next)) {
+                    return patch.getSkill(yesman.epicfight.skill.SkillSlots.BASIC_ATTACK).getDataManager()
+                        .getDataValue(yesman.epicfight.skill.SkillDataKeys.COMBO_COUNTER.get());
+                }
                 var data = patch.getOriginal().getPersistentData();
                 int stage = Math.floorMod(data.getInt("sasukeComboStage"), 3);
                 if (patch.getOriginal() instanceof ServerPlayer player && CombatController.specialAttack(player)) return counter;

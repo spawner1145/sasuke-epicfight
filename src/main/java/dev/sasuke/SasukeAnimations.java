@@ -24,6 +24,7 @@ public final class SasukeAnimations {
             PLAYER.clear();
             SPIRIT.clear();
             ATTACKS.clear();
+            PLAYER.put("basic_sheathe", builder.<ActionAnimation>nextAccessor("player/basic_sheathe", BasicSheatheAnimation::new));
             for (String source : new String[]{"walk", "jump", "fall", "fly", "creative_idle", "creative_fly_forward", "kneel", "sneak"}) {
                 for (boolean drawn : new boolean[]{false, true}) {
                     String name = source + (drawn ? "_drawn" : "_sheathed");
@@ -41,7 +42,7 @@ public final class SasukeAnimations {
                             .<BasicAttackAnimation, Float>addProperty(AttackAnimationProperty.ATTACK_SPEED_FACTOR, 0F)
                             .addProperty(yesman.epicfight.api.animation.property.AnimationProperty.AttackPhaseProperty.DAMAGE_MODIFIER,
                                 yesman.epicfight.api.utils.math.ValueModifier.multiplier(
-                                    (name.equals("dash_spin_slash") ? 26F : name.startsWith("4a") ? 12F : CombatController.BASE_ATTACK_DAMAGE)
+                                    (name.equals("dash_spin_slash") ? 40F : name.startsWith("4a") ? 16F : CombatController.BASE_ATTACK_DAMAGE)
                                         / CombatController.BASE_ATTACK_DAMAGE)));
                     ATTACKS.put(name, attack);
                 } else if (name.equals("sheathe_flourish")) {

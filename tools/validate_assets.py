@@ -47,6 +47,13 @@ for relative, joint_count in [('entity/susanoo.json', len(spirit['armature']['jo
         assert all(0 <= value < limits[index % 3] for index, value in enumerate(part['array']))
 
 trail_directory = ASSETS / 'animations/player/data'
+source_sheathe = json.loads((ASSETS / 'animations/player/sheathe_flourish.json').read_text())
+basic_sheathe = json.loads((ASSETS / 'animations/player/basic_sheathe.json').read_text())
+assert len(basic_sheathe['animation']) == len(source_sheathe['animation'])
+for source, clipped in zip(source_sheathe['animation'], basic_sheathe['animation']):
+    assert clipped['name'] == source['name']
+    assert clipped['transform'] == source['transform'][71:106], 'Basic sheathe must preserve the source flourish/insertion poses'
+    assert clipped['time'] == [round(i / 60, 4) for i in range(35)], 'Rebase the clipped animation to zero'
 for name in ('1a', '3a', '4a1', 'dash_spin_slash', 'sheathe_flourish'):
     config = json.loads((trail_directory / f'{name}.json').read_text())
     assert not config.get('trail_effects'), (name, 'Shared rendered-pose trail must not also emit native particles')

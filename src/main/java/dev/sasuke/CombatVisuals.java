@@ -37,12 +37,12 @@ public final class CombatVisuals {
             var accessor = player.getRealAnimation();
             var currentAnimation = player.getAnimation().get();
             String action = null;
-            for (String name : new String[]{"1a", "2a", "3a", "4a1", "4a2", "4a3", "draw_to_side", "dash_spin_slash", "sheathe_flourish", "perfect_parry"}) {
+            for (String name : new String[]{"1a", "2a", "3a", "4a1", "4a2", "4a3", "draw_to_side", "dash_spin_slash", "sheathe_flourish", "basic_sheathe", "perfect_parry"}) {
                 if (accessor.equals(SasukeAnimations.player(name))) { action = name; break; }
             }
             if (action == null && currentAnimation.getRegistryName() != null) {
                 String path = currentAnimation.getRegistryName().getPath();
-                for (String name : new String[]{"1a", "2a", "3a", "4a1", "4a2", "4a3", "draw_to_side", "dash_spin_slash", "sheathe_flourish", "perfect_parry"}) {
+                for (String name : new String[]{"1a", "2a", "3a", "4a1", "4a2", "4a3", "draw_to_side", "dash_spin_slash", "sheathe_flourish", "basic_sheathe", "perfect_parry"}) {
                     if (path.endsWith("player/" + name)) { action = name; break; }
                 }
             }
@@ -72,6 +72,8 @@ public final class CombatVisuals {
                 }
                 case "dash_spin_slash" -> spin(event, buffers, patch, animation, model, time, origin, BlackFlameVisuals.empowered(entity.getId()));
                 case "sheathe_flourish" -> sheathe(event, buffers, patch, animation, model, time);
+                case "basic_sheathe" -> sheathe(event, buffers, patch, animation, model,
+                    time + BasicSheatheAnimation.SOURCE_START_FRAME / 60F);
                 case "perfect_parry" -> {
                     float alpha = window(time, 0.02F, 0.10F, 0.15F);
                     if (alpha > 0) glint(event, buffers, joint(patch, animation, model, "Tool_R", new Vec3(0, 0, -0.4), time), 1.7F, alpha);
@@ -174,7 +176,7 @@ public final class CombatVisuals {
             : EffectGeometry.clamp((time - settleStart) / 0.04F)
                 * EffectGeometry.clamp((settleEnd - time) / (settleEnd - settleStart));
         if (settle > 0) {
-            Vec3 mouth = joint(patch, animation, model, "Root", new Vec3(0.36, 0.58, 0.18), time);
+            Vec3 mouth = BladeTrails.sheathMouth(patch, event.getPartialTick()).subtract(event.getCamera().getPosition());
             glint(event, buffers, mouth, 1.8F + settle * 0.35F, settle);
             EffectGeometry.billboard(buffers.getBuffer(EffectGeometry.type("ring")), event.getPoseStack(), event.getCamera(), mouth,
                 0.55F + settle * 0.22F, 0.55F + settle * 0.22F, 0, 0xF5E9FF, settle * 0.72F, 0, 1);

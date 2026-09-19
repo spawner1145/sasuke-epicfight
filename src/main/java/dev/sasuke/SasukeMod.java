@@ -20,7 +20,7 @@ public class SasukeMod {
     public static final String ID = "sasuke_epicfight";
     public static final DeferredRegister<Item> ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, ID);
     public static final DeferredRegister<EntityType<?>> ENTITIES = DeferredRegister.create(ForgeRegistries.ENTITY_TYPES, ID);
-    public static final RegistryObject<Item> KUSANAGI = ITEMS.register("kusanagi", () -> new SwordItem(Tiers.NETHERITE, 4, -2.2F, new Item.Properties().fireResistant()) {
+    public static final RegistryObject<Item> KUSANAGI = ITEMS.register("kusanagi", () -> new SwordItem(Tiers.NETHERITE, 7, -2.2F, new Item.Properties().fireResistant()) {
         @Override
         public int getMaxDamage(net.minecraft.world.item.ItemStack stack) { return 0; }
 

@@ -14,6 +14,16 @@ public final class RecoveryAttackAnimation extends BasicAttackAnimation {
     }
 
     @Override
+    public void end(yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch<?> patch,
+            yesman.epicfight.api.asset.AssetAccessor<? extends yesman.epicfight.api.animation.types.DynamicAnimation> next,
+            boolean completed) {
+        super.end(patch, next, completed);
+        if (completed && patch.getOriginal() instanceof net.minecraft.server.level.ServerPlayer player) {
+            CombatController.basicAttackEnded(player);
+        }
+    }
+
+    @Override
     protected net.minecraft.world.phys.Vec3 getCoordVector(yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch<?> patch,
             yesman.epicfight.api.asset.AssetAccessor<? extends yesman.epicfight.api.animation.types.DynamicAnimation> animation) {
         if (getAccessor().equals(SasukeAnimations.ATTACKS.get("4a2"))) return net.minecraft.world.phys.Vec3.ZERO;

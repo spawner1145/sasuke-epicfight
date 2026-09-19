@@ -47,6 +47,7 @@ final class BladeTrails {
             case "draw_to_side" -> new Window(0, 0.85F, 0.28F, 0.10F);
             case "dash_spin_slash" -> new Window(0.30F, 0.94F, 0.28F, 0.13F);
             case "sheathe_flourish" -> new Window(0, 97F / 60F, 0.34F, 0.08F);
+            case "basic_sheathe" -> new Window(0, (97F - BasicSheatheAnimation.SOURCE_START_FRAME) / 60F, 0.34F, 0.08F);
             default -> null;
         };
     }
@@ -127,5 +128,16 @@ final class BladeTrails {
 
     static Vec3 bladeTip(LivingEntityPatch<?> patch, float partial) {
         return sample(patch, partial).tip;
+    }
+
+    static Vec3 sheathMouth(LivingEntityPatch<?> patch, float partial) {
+        // Kusanagi's scabbard is rigidly weighted to Torso (joint 7).
+        // Center of its open +X rim, converted from mesh bind space to Torso local.
+        Vec3 mouth = new Vec3(0.408, -0.021, 0.161);
+        var pose = patch.getAnimator().getPose(partial);
+        var model = new OpenMatrix4f().rotateDeg(180, Vec3f.Y_AXIS).mulBack(patch.getModelMatrix(partial));
+        var transform = patch.getArmature().getBoundTransformFor(pose,
+            patch.getArmature().searchJointByName("Torso")).mulFront(model);
+        return OpenMatrix4f.transform(transform, mouth).add(patch.getOriginal().getPosition(partial));
     }
 }
