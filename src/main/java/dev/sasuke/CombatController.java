@@ -52,9 +52,7 @@ public final class CombatController {
         Vec3 direction = Vec3.ZERO;
         Vec3 origin = Vec3.ZERO;
         Vec3 impact = Vec3.ZERO;
-        int waveStep;
-        boolean waveDone;
-        int waveBurstAt;
+        FlameCast flame;
         boolean queuedAttack;
         long specialUntil;
         boolean specialAttack;
@@ -82,6 +80,66 @@ public final class CombatController {
         SusanooEntity spirit;
         ServerPlayerPatch installedPatch;
         final List<Entity> captured = new ArrayList<>();
+    }
+
+    private static final class FlameCast {
+        final net.minecraft.world.level.Level level;
+        final FlameLifecycle lifecycle;
+        final Vec3 direction;
+        final List<LivingEntity> swept = new ArrayList<>();
+        Vec3 impact;
+        int step;
+        long burstAt = -1;
+        FlameCast(ServerPlayer player) {
+            level = player.level();
+            lifecycle = new FlameLifecycle(level.getGameTime());
+            direction = horizontal(player);
+            impact = player.position();
+        }
+    }
+
+    static boolean flameSecondReady(ServerPlayer player, State state) {
+        return state.flame != null && state.flame.lifecycle.ready(player.level().getGameTime());
+    }
+
+    private static void interruptFlame(ServerPlayer player, State state) {
+        if (state.flame != null && !state.flame.lifecycle.survivesInterrupt(player.level().getGameTime())) state.flame = null;
+        // Stage two is consumed when cast. Canceling its motion cannot refund it.
+    }
+
+    private static void tickFlame(ServerPlayer player, State state, long now) {
+        FlameCast flame = state.flame;
+        if (flame == null) return;
+        if (!player.isAlive() || player.hasDisconnected() || flame.level != player.level()
+                || flame.lifecycle.expired(now)) { state.flame = null; return; }
+        if (!flame.lifecycle.launched(now) || flame.lifecycle.exploded) return;
+        if (flame.burstAt < 0) {
+            Vec3 next = groundStep(player, flame.impact, flame.direction);
+            if (next != null) {
+                flame.impact = next;
+                for (LivingEntity target : player.level().getEntitiesOfClass(LivingEntity.class, new AABB(next, next).inflate(1.5, 2, 1.5))) {
+                    if (validTarget(player, target) && player.hasLineOfSight(target) && !flame.swept.contains(target)) flame.swept.add(target);
+                }
+                flame.swept.removeIf(target -> !validTarget(player, target) || target.level() != player.level());
+                for (LivingEntity target : flame.swept) {
+                    Vec3 pull = next.subtract(target.position());
+                    target.stopRiding();
+                    target.move(MoverType.SELF, pull.scale(Math.min(1, 1.5 / Math.max(0.01, pull.length()))));
+                    target.setDeltaMovement(Vec3.ZERO);
+                    target.hurtMarked = true;
+                    if (target instanceof ServerPlayer other) other.connection.teleport(target.getX(), target.getY(), target.getZ(), target.getYRot(), target.getXRot());
+                }
+                erupt(player, next, 0.7F, 12F);
+            }
+            if (next == null || ++flame.step >= 14) {
+                flame.burstAt = now + 3;
+                SasukeNetwork.burst(player, flame.impact, -3F);
+            }
+        } else if (now >= flame.burstAt) {
+            erupt(player, flame.impact, 3F, 24F);
+            flame.lifecycle.exploded = true;
+            flame.swept.clear();
+        }
     }
 
     public static boolean equipped(ServerPlayer player) {
@@ -236,7 +294,9 @@ public final class CombatController {
         }
         // While stage two is available, allow the reverse chord as well.
         // Defer the ordinary summon briefly so the two orders produce one burst.
-        if (input.key() == 1 && state.phase == Phase.SECOND_READY && cooldownReady(player, now, state.firstReady)) {
+        if (input.key() == 1 && (state.phase == Phase.SECOND_READY || state.phase == Phase.NORMAL)
+                && flameSecondReady(player, state) && !patch.getEntityState().inaction()
+                && !patch.getEntityState().hurt() && !captured(player) && cooldownReady(player, now, state.firstReady)) {
             if (state.reverseFlameInputUntil == 0) state.reverseFlameInputUntil = now + 6;
             return;
         }
@@ -258,21 +318,24 @@ public final class CombatController {
             persist(player, state);
             return;
         }
-        if (input.key() == 2 && state.phase == Phase.SECOND_READY) {
+        if (input.key() == 2 && flameSecondReady(player, state)
+                && (state.phase == Phase.SECOND_READY || state.phase == Phase.NORMAL || state.phase == Phase.READY)) {
+            if (patch.getEntityState().inaction() || patch.getEntityState().hurt() || captured(player) || player.isPassenger()) return;
             if (now < state.reverseFlameInputUntil && cooldownReady(player, now, state.firstReady)) {
                 summonWithBlackFlame(player, state, now);
                 return;
             }
-            Vec3 forward = state.direction;
+            Vec3 forward = state.flame.direction;
             Vec3 left = new Vec3(forward.z, 0, -forward.x);
             Vec3 direction = forward.scale(input.forward()).add(left.scale(input.left()));
-            Vec3 destination = state.impact;
+            Vec3 destination = state.flame.impact;
             for (int step = 0; direction.lengthSqr() >= 0.01 && step < 4; step++) {
                 Vec3 next = groundStep(player, destination, direction.normalize());
                 if (next == null) break;
                 destination = next;
             }
             state.impact = destination;
+            state.flame.lifecycle.consumed = true;
             state.secondReady = now + AMATERASU_SECOND_COOLDOWN;
             start(player, state, Phase.AMATERASU_TWO, "amaterasu_2", 24);
             state.secondVoiceAt = now + 6;
@@ -286,16 +349,14 @@ public final class CombatController {
             state.firstReady = now + SUSANOO_COOLDOWN;
             summon(player, state);
             state.comboInputUntil = now + 6;
-        } else if (input.key() == 2 && cooldownReady(player, now, state.secondReady) && player.onGround()) {
+        } else if (input.key() == 2 && (state.flame == null || state.flame.lifecycle.consumed) && cooldownReady(player, now, state.secondReady) && player.onGround()) {
             state.secondReady = now + AMATERASU_COOLDOWN;
             state.flameVoice = CombatAudio.next(player, "flame", 3);
             CombatAudio.play(player, "flame_1_" + state.flameVoice);
             state.direction = horizontal(player);
             state.origin = state.impact = player.position();
-            state.waveStep = 0;
             state.swept.clear();
-            state.waveDone = false;
-            state.waveBurstAt = -1;
+            state.flame = new FlameCast(player);
             start(player, state, Phase.AMATERASU_ONE, "amaterasu_1", 21);
         }
         persist(player, state);
@@ -308,6 +369,7 @@ public final class CombatController {
     }
 
     private static void summonWithBlackFlame(ServerPlayer player, State state, long now) {
+        if (state.flame != null) state.flame.lifecycle.consumed = true;
         state.reverseFlameInputUntil = 0;
         state.secondVoiceAt = -1;
         state.comboInputUntil = 0;
@@ -450,6 +512,8 @@ public final class CombatController {
             });
         }
         long now = player.level().getGameTime();
+        tickFlame(player, state, now);
+        if (state.phase == Phase.AMATERASU_TWO && (patch.getEntityState().hurt() || ParalysisController.active(player))) cancelSkillMotion(player, state);
         if (state.summonAt >= 0 && now >= state.summonAt && equipped(player)
                 && !patch.getEntityState().hurt() && !ParalysisController.active(player)) activateSkeleton(player, state);
         if (state.secondVoiceAt >= 0) {
@@ -461,7 +525,7 @@ public final class CombatController {
             }
         }
         if (state.reverseFlameInputUntil != 0) {
-            if (state.phase != Phase.SECOND_READY || !equipped(player) || !patch.isEpicFightMode()
+            if ((state.phase != Phase.SECOND_READY && state.phase != Phase.NORMAL) || !flameSecondReady(player, state) || !equipped(player) || !patch.isEpicFightMode()
                     || patch.getEntityState().hurt() || ParalysisController.active(player)) {
                 state.reverseFlameInputUntil = 0;
             } else if (now >= state.reverseFlameInputUntil) {
@@ -529,31 +593,6 @@ public final class CombatController {
                 if (BlackFlameController.hasAura(player)) SasukeNetwork.flame(player.serverLevel(), blade, 0.45F, player.getId(), 7);
             }
         }
-        if (state.phase == Phase.AMATERASU_ONE && elapsed >= 3 && !state.waveDone) {
-            Vec3 next = groundStep(player, state.impact, state.direction);
-            if (next != null) {
-                state.impact = next;
-                for (LivingEntity target : player.level().getEntitiesOfClass(LivingEntity.class, new AABB(next, next).inflate(1.5, 2, 1.5))) {
-                    if (validTarget(player, target) && player.hasLineOfSight(target) && !state.swept.contains(target)) state.swept.add(target);
-                }
-                state.swept.removeIf(target -> !validTarget(player, target) || target.level() != player.level());
-                for (LivingEntity target : state.swept) {
-                    Vec3 pull = next.subtract(target.position());
-                    target.stopRiding();
-                    target.move(MoverType.SELF, pull.scale(Math.min(1, 1.5 / Math.max(0.01, pull.length()))));
-                    target.setDeltaMovement(Vec3.ZERO);
-                    target.hurtMarked = true;
-                    if (target instanceof ServerPlayer other) other.connection.teleport(target.getX(), target.getY(), target.getZ(), target.getYRot(), target.getXRot());
-                }
-                erupt(player, next, 0.7F, 12F);
-            }
-            if (next == null || ++state.waveStep >= 14) {
-                state.waveDone = true;
-                state.waveBurstAt = elapsed + 3;
-                SasukeNetwork.burst(player, state.impact, -3F);
-            }
-        }
-        if (state.phase == Phase.AMATERASU_ONE && elapsed == state.waveBurstAt) erupt(player, state.impact, 3F, 24F);
         if (state.phase == Phase.AMATERASU_TWO && elapsed == 1) SasukeNetwork.burst(player, state.impact, -3.5F);
         if (state.phase == Phase.AMATERASU_TWO && elapsed == 10) erupt(player, state.impact, 3.5F, 30F);
         if (state.phase == Phase.COMBO) {
@@ -616,7 +655,7 @@ public final class CombatController {
                 }
                 case AMATERASU_ONE -> {
                     state.phase = Phase.SECOND_READY;
-                    state.until = now + READY_WINDOW;
+                    state.until = state.flame == null ? now : state.flame.lifecycle.began + 21 + READY_WINDOW;
                     SasukeNetwork.status(player, state);
                 }
                 case SECOND_READY, AMATERASU_TWO -> {
@@ -730,6 +769,7 @@ public final class CombatController {
     }
 
     private static void cancelSkillMotion(ServerPlayer player, State state) {
+        interruptFlame(player, state);
         state.summonAt = -1;
         state.summonFlame = false;
         state.captured.clear();
@@ -809,6 +849,7 @@ public final class CombatController {
     }
 
     private static void clear(ServerPlayer player, State state) {
+        interruptFlame(player, state);
         var resistance = player.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.KNOCKBACK_RESISTANCE);
         if (resistance != null) resistance.removeModifier(SUSANOO_KNOCKBACK);
         var speed = player.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED);
@@ -851,7 +892,10 @@ public final class CombatController {
 
     @SubscribeEvent
     public static void changedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
-        if (event.getEntity() instanceof ServerPlayer player && STATES.containsKey(player)) clear(player, STATES.get(player));
+        if (event.getEntity() instanceof ServerPlayer player && STATES.containsKey(player)) {
+            STATES.get(player).flame = null;
+            clear(player, STATES.get(player));
+        }
     }
 
     @SubscribeEvent

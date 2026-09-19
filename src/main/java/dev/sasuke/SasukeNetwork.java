@@ -80,7 +80,8 @@ public final class SasukeNetwork {
 
     public static void status(ServerPlayer player, CombatController.State state) {
         long now = player.level().getGameTime();
-        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new Status(state.phase.ordinal(), player.isCreative() ? 0 : (int)Math.max(0, state.firstReady - now), player.isCreative() ? 0 : (int)Math.max(0, state.secondReady - now)));
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new Status(state.phase == CombatController.Phase.NORMAL && CombatController.flameSecondReady(player, state)
+            ? CombatController.Phase.SECOND_READY.ordinal() : state.phase.ordinal(), player.isCreative() ? 0 : (int)Math.max(0, state.firstReady - now), player.isCreative() ? 0 : (int)Math.max(0, state.secondReady - now)));
     }
 
     public static void burst(ServerPlayer player, Vec3 position, float radius) {
