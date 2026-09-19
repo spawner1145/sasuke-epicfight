@@ -47,7 +47,11 @@ for relative, joint_count in [('entity/susanoo.json', len(spirit['armature']['jo
         assert all(0 <= value < limits[index % 3] for index, value in enumerate(part['array']))
 
 trail_directory = ASSETS / 'animations/player/data'
+for name in ('1a', '3a', '4a1', 'dash_spin_slash', 'sheathe_flourish'):
+    config = json.loads((trail_directory / f'{name}.json').read_text())
+    assert not config.get('trail_effects'), (name, 'Shared rendered-pose trail must not also emit native particles')
 for config_path in trail_directory.glob('*.json'):
+    assert not json.loads(config_path.read_text()).get('trail_effects'), (config_path, 'All blade trails use the shared rendered-pose renderer')
     animation = json.loads((ASSETS / f'animations/player/{config_path.name}').read_text())
     duration = max(track['time'][-1] for track in animation['animation'])
     for trail in json.loads(config_path.read_text()).get('trail_effects', []):

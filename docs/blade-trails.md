@@ -1,29 +1,38 @@
-# Continuous blade trails
+# Blade trails
 
-The blade uses EpicFight 20.14.17's `AnimationTrailParticle` through animation
-`data/*.json` files. DevilMineCraft 1.0.4's `BloomTrailParticle` delegates its
-geometry to this same class; its separate bloom pipeline is not required here.
-No DevilMineCraft classes or textures are bundled or required.
+`BladeTrails` draws 1a, 3a, 4a1, draw_to_side, dash_spin_slash and sheathe_flourish through
+one rendering path. 1a emits throughout its 22/60-second animation, including
+its entry blend, rather than only during the old 0.083333–0.215-second window.
+3a also emits throughout 22/60 seconds, and 4a1 throughout 36/60 seconds.
+Drawing, spinning and sheathing retain their existing emission windows and textures.
 
-EpicFight retains world-space blade-root and blade-tip positions from the owner
-animator and connects successive samples with cubic Bezier interpolation. This
-includes player movement and animation blending. Each tick uses 12 interpolation
-steps per half-tick and keeps 3–4 ticks of history. End-time and fade-time settings
-stop emission before recovery and let the existing trail disappear.
+Samples use `patch.getAnimator().getPose(partial)` and the same `Tool_R` joint
+and model transform as Avalon's `RenderMeshItem`. Twelve subdivisions per tick
+follow the blended pose. Blade endpoints are (-0.005, -0.0177, 0.0898) and
+(-0.005, 0.1474, -1.70). Samples store their own world positions; moving or turning
+never transforms old samples again. World translation stays in double precision
+until camera subtraction. The newest edge attaches to the currently rendered blade.
 
-`Tool_R` endpoints are (-0.005, -0.0177, 0.0898) and (-0.005, 0.1474, -1.70).
-The texture maps U from old to new history, V=0 to the blade tip and V=1 to the
-blade root. Its white outer core and cyan inner falloff follow `refer/1a.png`.
-It remains opaque at the leading U edge so the trail connects to the blade;
-the tapered alpha footprint is not a pre-painted arc or spiral.
+History is time-bounded (0.20 seconds for 1a), with a 256-edge memory cap.
+Interrupted/restarted attacks, replaced entities, level changes and players leaving
+render range clear state. Link-to-attack transitions retain history. Repeated
+renders while paused do not append duplicate edges.
 
-Trails are configured for 1a, 3a, 4a1, dash_spin_slash and sheathe_flourish.
-2a retains only kick air pressure. Thrust lightning, spin dust/black embers and
-sheathe glints remain separate effects. The old sampled fan and rotating spin
-fan are no longer drawn. DMC's flowing vertex distortion is intentionally not
-used because it would displace the surface away from the actual blade path.
+Native `trail_effects` arrays for these custom-rendered actions are empty to prevent
+duplicate surfaces. There are no remaining native blade-trail particles or synthetic
+thrust light bars. 4a1 retains its independent lightning lance and tip halo, both
+anchored to the same rendered-pose blade endpoints; 2a retains kick air pressure only. Spin dust, black embers and sheathe
+glints remain separate. No DevilMineCraft runtime is required.
 
-Validation: `python tools/validate_assets.py` and `gradlew.bat build`.
-Check in game at both low and high frame rates: moving 1a, chained attacks,
-spin while translating, an interrupted attack, 2a without a blade trail,
-and sheathing. Build/resource checks do not establish visual fidelity.
+Validation:
+
+```powershell
+python tools/validate_assets.py
+javac -d build/trail-tests src/main/java/dev/sasuke/BladeTrailHistory.java tools/tests/dev/sasuke/BladeTrailHistoryTest.java
+java -cp build/trail-tests dev.sasuke.BladeTrailHistoryTest
+./gradlew.bat build
+```
+
+In-game checks: stationary/moving/turning 1a, 3a and 4a1 at low and high frame rates, entry
+blending, final recovery frames, interrupted/restarted attacks, black-flame spin,
+and sheathing. Automated checks do not establish visual fidelity.

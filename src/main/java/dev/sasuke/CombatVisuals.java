@@ -17,20 +17,22 @@ import java.util.Map;
 
 @Mod.EventBusSubscriber(modid = SasukeMod.ID, value = Dist.CLIENT)
 public final class CombatVisuals {
-    private static final Vec3 BLADE_TIP = new Vec3(-0.005, 0.1474, -1.70);
     private static final Map<Integer, Boolean> WAS_SHEATHING = new HashMap<>();
 
     @SubscribeEvent
     public static void render(RenderLevelStageEvent event) {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
         var mc = Minecraft.getInstance();
+        BladeTrails.beginFrame(mc.level);
         if (mc.level == null || mc.player == null) return;
+        var trailPlayers = new java.util.HashSet<Integer>();
         var buffers = mc.renderBuffers().bufferSource();
         for (var entity : mc.level.players()) {
             if (!entity.isAlive() || entity.isSpectator() || !entity.getMainHandItem().is(SasukeMod.KUSANAGI.get())
                     || entity.distanceToSqr(mc.player) > 4096) continue;
             var patch = EpicFightCapabilities.getEntityPatch(entity, LivingEntityPatch.class);
             if (patch == null) continue;
+            trailPlayers.add(entity.getId());
             var player = patch.getAnimator().getPlayerFor(null);
             var accessor = player.getRealAnimation();
             var currentAnimation = player.getAnimation().get();
@@ -56,20 +58,19 @@ public final class CombatVisuals {
             } else if (wasSheathing) {
                 WAS_SHEATHING.put(entityId, false);
             }
+            BladeTrails.render(event, buffers, patch, action, time,
+                "dash_spin_slash".equals(action) && BlackFlameVisuals.empowered(entityId));
             if (action == null) {
                 continue;
             }
             switch (action) {
                 case "2a" -> kick(event, buffers, patch, animation, model, time, origin, entity.yBodyRot);
-                case "3a" -> thrust(event, buffers, patch, animation, model, time, 0.065F, 0.205F, false);
-                case "4a1" -> thrust(event, buffers, patch, animation, model, time, 0.15F, 0.425F, true);
+                case "4a1" -> thrustLightning(event, buffers, patch, time);
                 case "4a3" -> {
                     float alpha = window(time, 0.20F, 0.66F, 0.10F);
                     if (alpha > 0) ElectricVisuals.body(event, origin.add(0, 0.9, 0), entity.getId(), time * 20, alpha);
                 }
                 case "dash_spin_slash" -> spin(event, buffers, patch, animation, model, time, origin, BlackFlameVisuals.empowered(entity.getId()));
-                case "draw_to_side" -> bladeTrail(event, buffers, patch, animation, model, time, 0.0F, 0.85F,
-                    window(time, 0.0F, 0.85F, 0.10F), 0.28F, false);
                 case "sheathe_flourish" -> sheathe(event, buffers, patch, animation, model, time);
                 case "perfect_parry" -> {
                     float alpha = window(time, 0.02F, 0.10F, 0.15F);
@@ -78,6 +79,7 @@ public final class CombatVisuals {
                 default -> { }
             }
         }
+        BladeTrails.retainPlayers(trailPlayers);
         for (String texture : new String[]{"slash_trail", "black_slash_trail", "kick_air", "white", "glint", "ring", "halo", "dust"}) {
             buffers.endBatch(EffectGeometry.type(texture));
         }
@@ -130,68 +132,34 @@ public final class CombatVisuals {
         dust(event, buffers, origin, time - 0.15F, alpha, 0.8F);
     }
 
-    private static void thrust(RenderLevelStageEvent event, MultiBufferSource.BufferSource buffers,
-            LivingEntityPatch<?> patch, StaticAnimation animation, OpenMatrix4f model, float time,
-            float start, float end, boolean electric) {
-        float alpha = window(time, start, end, 0.065F);
+    private static void thrustLightning(RenderLevelStageEvent event, MultiBufferSource.BufferSource buffers,
+            LivingEntityPatch<?> patch, float time) {
+        float alpha = window(time, 0.15F, 0.425F, 0.065F);
         if (alpha <= 0) return;
-        float sample = Math.min(time, end);
-        Vec3 grip = joint(patch, animation, model, "Tool_R", Vec3.ZERO, sample);
-        Vec3 tip = joint(patch, animation, model, "Tool_R", BLADE_TIP, sample);
-        Vec3 direction = tip.subtract(grip).normalize();
-        var output = buffers.getBuffer(EffectGeometry.type("white"));
-        Vec3 point = tip.add(direction.scale(electric ? 1.5 : 0.9));
-        EffectGeometry.line(output, event.getPoseStack(), grip.subtract(direction.scale(0.7)), point, electric ? 0.29F : 0.18F, 0, 0x4BDFFF, alpha * 0.25F);
-        EffectGeometry.line(output, event.getPoseStack(), grip, point, electric ? 0.18F : 0.105F, 0, 0xEDFFFF, alpha);
-        EffectGeometry.line(output, event.getPoseStack(), grip.subtract(direction.scale(1.8)), point, 0.015F, 0, 0xFFFFFF, alpha);
-        if (electric) ElectricVisuals.lance(event, grip, point, time * 20, alpha);
-        var glow = buffers.getBuffer(EffectGeometry.type("halo"));
-        EffectGeometry.billboard(glow, event.getPoseStack(), event.getCamera(), tip, electric ? 2.4F : 1.4F,
-            electric ? 2.4F : 1.4F, 0, 0x44DFFF, alpha * 0.6F, 0, 1);
+        Vec3 camera = event.getCamera().getPosition();
+        Vec3 grip = BladeTrails.bladeRoot(patch, event.getPartialTick()).subtract(camera);
+        Vec3 tip = BladeTrails.bladeTip(patch, event.getPartialTick()).subtract(camera);
+        Vec3 point = tip.add(tip.subtract(grip).normalize().scale(1.5));
+        ElectricVisuals.lance(event, grip, point, time * 20, alpha);
+        EffectGeometry.billboard(buffers.getBuffer(EffectGeometry.type("halo")), event.getPoseStack(),
+            event.getCamera(), tip, 2.4F, 2.4F, 0, 0x44DFFF, alpha * 0.6F, 0, 1);
     }
 
     private static void spin(RenderLevelStageEvent event, MultiBufferSource.BufferSource buffers,
             LivingEntityPatch<?> patch, StaticAnimation animation, OpenMatrix4f model, float time, Vec3 origin, boolean black) {
         float alpha = window(time, 0.30F, 0.94F, 0.13F);
         if (alpha <= 0) return;
-        bladeTrail(event, buffers, patch, animation, model, time, 0.30F, 0.94F, alpha, 0.28F, black);
         Vec3 pivot = joint(patch, animation, model, "Chest", Vec3.ZERO, Math.min(time, 0.94F));
         dust(event, buffers, origin, time - 0.3F, alpha, 2.7F);
         if (black) BlackFlameVisuals.spinEmbers(event, pivot, time, alpha);
     }
 
-    private static void bladeTrail(RenderLevelStageEvent event, MultiBufferSource.BufferSource buffers,
-            LivingEntityPatch<?> patch, StaticAnimation animation, OpenMatrix4f model, float time,
-            float start, float end, float alpha, float history, boolean black) {
-        float head = Math.min(time, end);
-        float tail = Math.max(start, head - history);
-        Vec3[] starts = new Vec3[28];
-        Vec3[] ends = new Vec3[28];
-        for (int index = 0; index < starts.length; index++) {
-            float sample = tail + (head - tail) * index / (starts.length - 1F);
-            starts[index] = joint(patch, animation, model, "Tool_R", new Vec3(-0.005, -0.0177, 0.0898), sample);
-            ends[index] = joint(patch, animation, model, "Tool_R", BLADE_TIP, sample);
-        }
-        var trail = buffers.getBuffer(EffectGeometry.type(black ? "black_slash_trail" : "slash_trail"));
-        for (int index = 1; index < starts.length; index++) {
-            float from = (index - 1F) / (starts.length - 1F);
-            float to = index / (starts.length - 1F);
-            float fade = alpha * (0.22F + 0.78F * to);
-            EffectGeometry.vertex(trail, event.getPoseStack(), starts[index - 1], from, 1, 0xB8F7FF, fade);
-            EffectGeometry.vertex(trail, event.getPoseStack(), ends[index - 1], from, 0, 0xFFFFFF, fade);
-            EffectGeometry.vertex(trail, event.getPoseStack(), ends[index], to, 0, 0xFFFFFF, fade);
-            EffectGeometry.vertex(trail, event.getPoseStack(), starts[index], to, 1, 0xB8F7FF, fade);
-        }
-    }
-
     private static void sheathe(RenderLevelStageEvent event, MultiBufferSource.BufferSource buffers,
             LivingEntityPatch<?> patch, StaticAnimation animation, OpenMatrix4f model, float time) {
-        float trailAlpha = window(time, 0.0F, 97F / 60F, 0.08F);
-        if (trailAlpha > 0) bladeTrail(event, buffers, patch, animation, model, time, 0.0F, 97F / 60F, trailAlpha, 0.34F, false);
         float flick = window(time, 0.37F, 0.54F, 0.08F);
         if (flick > 0) {
-            Vec3 grip = joint(patch, animation, model, "Tool_R", Vec3.ZERO, time);
-            Vec3 tip = joint(patch, animation, model, "Tool_R", BLADE_TIP, time);
+            Vec3 grip = BladeTrails.bladeRoot(patch, event.getPartialTick()).subtract(event.getCamera().getPosition());
+            Vec3 tip = BladeTrails.bladeTip(patch, event.getPartialTick()).subtract(event.getCamera().getPosition());
             var output = buffers.getBuffer(EffectGeometry.type("white"));
             Vec3 side = tip.subtract(grip).cross(new Vec3(0, 1, 0)).normalize();
             for (int index = 0; index < 3; index++) {
