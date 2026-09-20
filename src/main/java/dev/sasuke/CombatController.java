@@ -100,6 +100,7 @@ public final class CombatController {
         boolean comboGrabbed;
         boolean basicTriggered;
         int shieldHits;
+        boolean shieldBreakPending;
         long skeletonUntil;
         long summonAt = -1;
         boolean summonFlame;
@@ -213,9 +214,16 @@ public final class CombatController {
     private static boolean skillDamage(net.minecraft.world.damagesource.DamageSource source) {
         if (source == null) return false;
         if (source instanceof SkillDamageSource) return true;
+        // Our skeleton slash uses Epic Fight's animation damage source.
+        // Other mods' non-basic attacks are not Sasuke skills.
         return source instanceof yesman.epicfight.world.damagesource.EpicFightDamageSource epic
-            && !epic.isBasicAttack() && epic.getEntity() instanceof net.minecraft.world.entity.player.Player
-            && !epic.is(net.minecraft.tags.DamageTypeTags.IS_EXPLOSION);
+            && epic.getAnimation().equals(SasukeAnimations.player("dash_spin_slash"));
+    }
+
+    private static boolean breakHardBody(LivingEntity target, net.minecraft.world.damagesource.DamageSource source) {
+        if (superArmor(target) || !skillBody(target) || !skillDamage(source)) return false;
+        interruptForCapture(target);
+        return true;
     }
 
     public static boolean superArmor(LivingEntity target) {
@@ -451,6 +459,10 @@ public final class CombatController {
         State state = state(player);
         var patch = EpicFightCapabilities.getEntityPatch(player, ServerPlayerPatch.class);
         if (patch == null) return;
+        if (state.shieldBreakPending) {
+            clear(player, state);
+            if (!captured(player)) restoreMovementAnimation(player, patch);
+        }
         if (state.spirit != null && player.level().getGameTime() >= state.skeletonUntil) {
             state.spirit.dissolve();
             state.spirit = null;
@@ -458,13 +470,8 @@ public final class CombatController {
         }
         if (superArmor(player) && !captured(player)) patch.setStamina(patch.getMaxStamina());
         var resistance = player.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.KNOCKBACK_RESISTANCE);
-        if (resistance != null) {
-            if (superArmor(player)) {
-                if (resistance.getModifier(SUSANOO_KNOCKBACK) == null) resistance.addTransientModifier(
-                    new net.minecraft.world.entity.ai.attributes.AttributeModifier(SUSANOO_KNOCKBACK, "Susanoo knockback resistance", 1.0,
-                        net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADDITION));
-            } else resistance.removeModifier(SUSANOO_KNOCKBACK);
-        }
+        // Remove the legacy state-driven modifier; the body effects now own resistance.
+        if (resistance != null) resistance.removeModifier(SUSANOO_KNOCKBACK);
         var speed = player.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED);
         if (speed != null) {
             boolean enabled = equipped(player) && state.spirit != null && state.spirit.isAlive() && !state.spirit.dissolving();
@@ -798,6 +805,7 @@ public final class CombatController {
         state.summonAt = -1;
         if (state.spirit != null) state.spirit.dissolve();
         state.shieldHits = 3;
+        state.shieldBreakPending = false;
         state.skeletonUntil = player.level().getGameTime() + SUSANOO_READY_WINDOW;
         state.spirit = new SusanooEntity(SasukeMod.SUSANOO.get(), player.level());
         state.spirit.tame(player);
@@ -869,9 +877,10 @@ public final class CombatController {
                 position.add(0, 0.2, 0), target.getBoundingBox().getCenter(), ClipContext.Block.COLLIDER,
                 ClipContext.Fluid.NONE, player)).getType() == HitResult.Type.MISS;
             float amount = (skeletonHit ? 16F : 0F) + (flameHit ? 30F : 0F);
-            boolean armored = target instanceof LivingEntity living && superArmor(living);
             if (flameHit) BlackFlameController.damage(player, target, amount);
             else if (skeletonHit) damage(player, target, amount);
+            // Skill damage breaks hard body first; surviving armor still blocks the push.
+            boolean armored = target instanceof LivingEntity living && (superArmor(living) || skillBody(living));
             if (skeletonHit && !armored) {
                 Vec3 outward = target.position().subtract(position).multiply(1, 0, 1).normalize();
                 target.push(outward.x * 0.55, 0.15, outward.z * 0.55);
@@ -887,8 +896,8 @@ public final class CombatController {
         Vec3 center = player.getBoundingBox().getCenter();
         for (Entity target : player.level().getEntities(player, player.getBoundingBox().inflate(3), entity -> validTarget(player, entity))) {
             if (target.getBoundingBox().distanceToSqr(center) > 9 || !player.hasLineOfSight(target)) continue;
-            boolean armored = target instanceof LivingEntity living && superArmor(living);
             damage(player, target, 16F);
+            boolean armored = target instanceof LivingEntity living && (superArmor(living) || skillBody(living));
             if (armored) continue;
             Vec3 outward = target.position().subtract(player.position()).multiply(1, 0, 1).normalize();
             target.push(outward.x * 0.55, 0.15, outward.z * 0.55);
@@ -909,6 +918,7 @@ public final class CombatController {
         state.secondVoiceAt = -1;
         state.reverseFlameInputUntil = 0;
         state.shieldHits = 0;
+        state.shieldBreakPending = false;
         state.swept.clear();
         state.specialUntil = 0;
         if (state.spirit != null) state.spirit.dissolve();
@@ -963,8 +973,7 @@ public final class CombatController {
         }
         if (skillBody(target)) {
             // HOLD alone is not evidence of a grab. Actual grabs use the capture path.
-            if (skillDamage(event.getDamageSource())) interruptForCapture(target);
-            else event.setCanceled(true);
+            if (!breakHardBody(target, event.getDamageSource())) event.setCanceled(true);
         }
     }
 
@@ -993,8 +1002,7 @@ public final class CombatController {
     public static void mitigate(net.minecraftforge.event.entity.living.LivingHurtEvent event) {
         LivingEntity target = event.getEntity();
         if (event.getAmount() <= 0 || target.level().isClientSide()) return;
-        if (!superArmor(target) && skillBody(target) && skillDamage(event.getSource())) {
-            interruptForCapture(target);
+        if (breakHardBody(target, event.getSource())) {
             var targetPatch = EpicFightCapabilities.getEntityPatch(target, yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch.class);
             if (targetPatch != null) targetPatch.applyStun(yesman.epicfight.world.damagesource.StunType.SHORT, 0.25F);
         }
@@ -1006,9 +1014,9 @@ public final class CombatController {
         CombatAudio.play(player, "susanoo_hurt");
         event.setAmount(event.getAmount() * 0.1F);
         if (--state.shieldHits == 0) {
-            clear(player, state);
-            var patch = EpicFightCapabilities.getEntityPatch(player, ServerPlayerPatch.class);
-            if (patch != null) restoreMovementAnimation(player, patch);
+            // LivingHurtEvent precedes hitstun and knockback. Keep armor through
+            // this hit's complete resolution, then retire it on the player tick.
+            state.shieldBreakPending = true;
         }
     }
 }
