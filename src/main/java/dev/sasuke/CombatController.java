@@ -440,7 +440,7 @@ public final class CombatController {
         try { patch.playAnimationSynchronized(SasukeAnimations.player(animation), 0F); }
         finally { state.startingAction = false; }
         if (phase == Phase.DASH && state.spirit != null) {
-            state.spirit.discard();
+            state.spirit.dissolve();
             state.spirit = null;
         }
         if (state.spirit != null && state.spirit.isAlive() && phase != Phase.DASH) state.spirit.animate(animation);

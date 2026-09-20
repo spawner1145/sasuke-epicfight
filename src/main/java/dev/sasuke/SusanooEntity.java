@@ -13,17 +13,14 @@ public class SusanooEntity extends VFXEntity {
     private static final EntityDataAccessor<String> ACTION = SynchedEntityData.defineId(SusanooEntity.class, EntityDataSerializers.STRING);
     private static final EntityDataAccessor<Integer> REVISION = SynchedEntityData.defineId(SusanooEntity.class, EntityDataSerializers.INT);
     private Armature instanceArmature;
-    private int dissolveTicks;
-
-    public boolean dissolving() { return entityData.get(DIS_SPEED) > 0; }
+    public boolean dissolving() { return isRemoved(); }
 
     public void dissolve() {
-        if (dissolving()) return;
-        setDisSpeed(1F / 30F);
-        dissolveTicks = 32;
+        if (level().isClientSide || isRemoved()) return;
         if (getOwner() instanceof net.minecraft.server.level.ServerPlayer player) {
             SasukeNetwork.flame(player.serverLevel(), position().add(0, 1.5, 0), 1.2F, -1, 10);
         }
+        discard();
     }
 
     public SusanooEntity(EntityType<? extends SusanooEntity> type, Level level) {
@@ -68,15 +65,16 @@ public class SusanooEntity extends VFXEntity {
     @Override
     public void tick() {
         super.tick();
-        if (dissolving() && !level().isClientSide && --dissolveTicks <= 0) { discard(); return; }
+        if (isRemoved()) return;
         var owner = getOwner();
         if (owner != null && owner.isAlive() && owner.level() == level()) {
             setDeltaMovement(Vec3.ZERO);
             moveToOwner(owner);
             setStartYRot(owner.yBodyRot);
-            if (!dissolving() && (action().equals("idle_sword_side") || action().equals("run_sword_side"))) {
+            if (!level().isClientSide && !dissolving() && (action().equals("idle_sword_side") || action().equals("run_sword_side"))) {
                 boolean moving = owner.isSprinting();
-                animate(moving ? "run_sword_side" : "idle_sword_side");
+                String nextAction = moving ? "run_sword_side" : "idle_sword_side";
+                if (!action().equals(nextAction)) animate(nextAction);
             }
         } else if (!level().isClientSide && tickCount > 5) {
             discard();
