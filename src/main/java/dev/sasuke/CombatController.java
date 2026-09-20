@@ -27,6 +27,34 @@ import yesman.epicfight.world.entity.eventlistener.PlayerEventListener.EventType
 public final class CombatController {
     public enum Phase { NORMAL, DRAW, READY, DASH, SHEATHE, AMATERASU_ONE, SECOND_READY, AMATERASU_TWO, COMBO, COMBO_RECOVERY }
     private static final Map<ServerPlayer, State> STATES = new WeakHashMap<>();
+
+    private static final Map<ServerPlayer, java.util.Set<net.minecraft.world.effect.MobEffect>> BODY_LEASES = new WeakHashMap<>();
+
+    private static void syncBodyImmunity(ServerPlayer player) {
+        State state = STATES.get(player);
+        boolean live = player.isAlive() && equipped(player) && state != null;
+        boolean hard = live && !captured(player) && switch (state.phase) {
+            case DRAW, DASH, SHEATHE, AMATERASU_ONE, AMATERASU_TWO, COMBO, COMBO_RECOVERY -> true;
+            default -> false;
+        };
+        boolean armor = live && state.spirit != null && state.spirit.isAlive() && !state.spirit.dissolving();
+        syncBodyEffect(player, SasukeMod.HARD_BODY.get(), hard);
+        syncBodyEffect(player, SasukeMod.SUPER_ARMOR.get(), armor);
+    }
+
+    private static void syncBodyEffect(ServerPlayer player, net.minecraft.world.effect.MobEffect effect, boolean active) {
+        var leases = BODY_LEASES.computeIfAbsent(player, ignored -> new java.util.HashSet<>());
+        var current = player.getEffect(effect);
+        boolean owned = leases.contains(effect) && current != null && !current.isInfiniteDuration() && current.getDuration() <= 2;
+        if (active && (current == null || owned)) {
+            player.addEffect(new net.minecraft.world.effect.MobEffectInstance(effect, 2, 0, false, false, true));
+            leases.add(effect);
+        } else {
+            if (!active && owned) player.removeEffect(effect);
+            leases.remove(effect);
+        }
+        if (leases.isEmpty()) BODY_LEASES.remove(player);
+    }
     private static final UUID LISTENER = UUID.fromString("c1fe110d-5216-4e5d-a873-293b2cf47a91");
     private static final UUID SUSANOO_SPEED = UUID.fromString("6359a1bd-ef3e-46e3-93ec-b02492eae3e7");
     private static final UUID SUSANOO_KNOCKBACK = UUID.fromString("ade2c302-2bf7-4f47-a1b3-1945f39de20c");
@@ -122,12 +150,19 @@ public final class CombatController {
                 }
                 flame.swept.removeIf(target -> !validTarget(player, target) || target.level() != player.level());
                 for (LivingEntity target : flame.swept) {
+                    // Recheck every step, including targets armored after entering the wave.
+                    if (superArmor(target)) continue;
                     Vec3 pull = next.subtract(target.position());
                     target.stopRiding();
                     target.move(MoverType.SELF, pull.scale(Math.min(1, 1.5 / Math.max(0.01, pull.length()))));
                     target.setDeltaMovement(Vec3.ZERO);
                     target.hurtMarked = true;
-                    if (target instanceof ServerPlayer other) other.connection.teleport(target.getX(), target.getY(), target.getZ(), target.getYRot(), target.getXRot());
+                    if (target instanceof ServerPlayer other) {
+                        // Move the skill's stationary anchor too, so its next tick cannot undo suction.
+                        State targetState = STATES.get(other);
+                        if (targetState != null && skillBody(other)) targetState.anchor = target.position();
+                        other.connection.teleport(target.getX(), target.getY(), target.getZ(), target.getYRot(), target.getXRot());
+                    }
                 }
                 erupt(player, next, 0.7F, 12F);
             }
@@ -166,12 +201,7 @@ public final class CombatController {
     }
 
     public static boolean skillBody(LivingEntity target) {
-        if (!(target instanceof ServerPlayer player) || !equipped(player) || captured(target)) return false;
-        State state = STATES.get(player);
-        return state != null && switch (state.phase) {
-            case DRAW, DASH, SHEATHE, AMATERASU_ONE, AMATERASU_TWO, COMBO, COMBO_RECOVERY -> true;
-            default -> false;
-        };
+        return target.hasEffect(SasukeMod.HARD_BODY.get());
     }
 
     static class SkillDamageSource extends net.minecraft.world.damagesource.DamageSource {
@@ -189,15 +219,15 @@ public final class CombatController {
     }
 
     public static boolean superArmor(LivingEntity target) {
-        if (!(target instanceof ServerPlayer player) || captured(target)) return false;
-        State state = STATES.get(player);
-        return state != null && equipped(player) && (state.spirit != null && state.spirit.isAlive() && !state.spirit.dissolving());
+        return target.hasEffect(SasukeMod.SUPER_ARMOR.get());
     }
 
     public static void interruptForCapture(LivingEntity target) {
+        target.removeEffect(SasukeMod.HARD_BODY.get());
         if (target instanceof ServerPlayer player) {
             State state = STATES.get(player);
-            if (state != null && state.phase != Phase.NORMAL) clear(player, state);
+            // Interrupt the motion without destroying the skeleton that supplies armor.
+            if (state != null) cancelSkillMotion(player, state);
         }
     }
 
@@ -392,6 +422,7 @@ public final class CombatController {
             state.lockedPitch = player.getXRot();
         }
         state.phase = phase;
+        syncBodyImmunity(player);
         state.began = player.level().getGameTime();
         state.until = state.began + ticks;
         state.anchor = player.position();
@@ -411,6 +442,12 @@ public final class CombatController {
     @SubscribeEvent
     public static void tick(TickEvent.PlayerTickEvent event) {
         if (event.phase != TickEvent.Phase.END || !(event.player instanceof ServerPlayer player)) return;
+        try { tickCombat(event); }
+        finally { syncBodyImmunity(player); }
+    }
+
+    private static void tickCombat(TickEvent.PlayerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END || !(event.player instanceof ServerPlayer player)) return;
         State state = state(player);
         var patch = EpicFightCapabilities.getEntityPatch(player, ServerPlayerPatch.class);
         if (patch == null) return;
@@ -419,7 +456,7 @@ public final class CombatController {
             state.spirit = null;
             state.shieldHits = 0;
         }
-        if (superArmor(player)) patch.setStamina(patch.getMaxStamina());
+        if (superArmor(player) && !captured(player)) patch.setStamina(patch.getMaxStamina());
         var resistance = player.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.KNOCKBACK_RESISTANCE);
         if (resistance != null) {
             if (superArmor(player)) {
@@ -767,6 +804,7 @@ public final class CombatController {
         state.spirit.setPos(player.position());
         player.level().addFreshEntity(state.spirit);
         state.spirit.animate(state.phase == Phase.COMBO ? "amaterasu_combo" : "draw_to_side");
+        syncBodyImmunity(player);
         if (state.summonFlame) {
             BlackFlameController.aura(player);
             combinedSummonBurst(player);
@@ -786,6 +824,7 @@ public final class CombatController {
         state.basic = "";
         state.basicSheatheAt = -1;
         state.phase = Phase.NORMAL;
+        syncBodyImmunity(player);
         if (state.spirit != null && state.spirit.isAlive() && !state.spirit.dissolving()) state.spirit.animate("idle_sword_side");
         var patch = EpicFightCapabilities.getEntityPatch(player, ServerPlayerPatch.class);
         if (patch != null) patch.modifyLivingMotionByCurrentItem();
@@ -830,9 +869,10 @@ public final class CombatController {
                 position.add(0, 0.2, 0), target.getBoundingBox().getCenter(), ClipContext.Block.COLLIDER,
                 ClipContext.Fluid.NONE, player)).getType() == HitResult.Type.MISS;
             float amount = (skeletonHit ? 16F : 0F) + (flameHit ? 30F : 0F);
+            boolean armored = target instanceof LivingEntity living && superArmor(living);
             if (flameHit) BlackFlameController.damage(player, target, amount);
             else if (skeletonHit) damage(player, target, amount);
-            if (skeletonHit) {
+            if (skeletonHit && !armored) {
                 Vec3 outward = target.position().subtract(position).multiply(1, 0, 1).normalize();
                 target.push(outward.x * 0.55, 0.15, outward.z * 0.55);
                 target.hurtMarked = true;
@@ -847,7 +887,9 @@ public final class CombatController {
         Vec3 center = player.getBoundingBox().getCenter();
         for (Entity target : player.level().getEntities(player, player.getBoundingBox().inflate(3), entity -> validTarget(player, entity))) {
             if (target.getBoundingBox().distanceToSqr(center) > 9 || !player.hasLineOfSight(target)) continue;
+            boolean armored = target instanceof LivingEntity living && superArmor(living);
             damage(player, target, 16F);
+            if (armored) continue;
             Vec3 outward = target.position().subtract(player.position()).multiply(1, 0, 1).normalize();
             target.push(outward.x * 0.55, 0.15, outward.z * 0.55);
             target.hurtMarked = true;
@@ -874,6 +916,7 @@ public final class CombatController {
         state.captured.clear();
         state.queuedAttack = false;
         state.phase = Phase.NORMAL;
+        syncBodyImmunity(player);
         if (state.spirit != null && state.spirit.isAlive() && !state.spirit.dissolving()) state.spirit.animate("idle_sword_side");
         var patch = EpicFightCapabilities.getEntityPatch(player, ServerPlayerPatch.class);
         if (patch != null) patch.modifyLivingMotionByCurrentItem();
@@ -892,6 +935,7 @@ public final class CombatController {
     public static void logout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             State state = STATES.remove(player);
+            syncBodyImmunity(player);
             if (state != null && state.spirit != null) state.spirit.discard();
         }
     }
@@ -905,16 +949,23 @@ public final class CombatController {
     }
 
     @SubscribeEvent
-    public static void stopped(ServerStoppedEvent event) { STATES.clear(); }
+    public static void stopped(ServerStoppedEvent event) { STATES.clear(); BODY_LEASES.clear(); }
 
     @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
     public static void preventStun(yesman.epicfight.api.forgeevent.EntityStunEvent event) {
         LivingEntity target = event.getStunnedEntityPatch().getOriginal();
-        if (event.getStunType() == yesman.epicfight.world.damagesource.StunType.HOLD) {
-            interruptForCapture(target);
-        } else if (superArmor(target) || skillBody(target) && !skillDamage(event.getDamageSource())) {
+        if (captured(target)) return;
+        // Check armor before HOLD: Epic Fight uses HOLD for forced hitstun,
+        // not only grabs. Cancel before it interrupts our skill or drains stun armor.
+        if (superArmor(target)) {
             event.setCanceled(true);
-        } else if (skillBody(target) && skillDamage(event.getDamageSource())) interruptForCapture(target);
+            return;
+        }
+        if (skillBody(target)) {
+            // HOLD alone is not evidence of a grab. Actual grabs use the capture path.
+            if (skillDamage(event.getDamageSource())) interruptForCapture(target);
+            else event.setCanceled(true);
+        }
     }
 
     @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
@@ -940,15 +991,17 @@ public final class CombatController {
 
     @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.LOWEST)
     public static void mitigate(net.minecraftforge.event.entity.living.LivingHurtEvent event) {
+        LivingEntity target = event.getEntity();
+        if (event.getAmount() <= 0 || target.level().isClientSide()) return;
+        if (!superArmor(target) && skillBody(target) && skillDamage(event.getSource())) {
+            interruptForCapture(target);
+            var targetPatch = EpicFightCapabilities.getEntityPatch(target, yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch.class);
+            if (targetPatch != null) targetPatch.applyStun(yesman.epicfight.world.damagesource.StunType.SHORT, 0.25F);
+        }
         if (!(event.getEntity() instanceof ServerPlayer player) || event.getAmount() <= 0) return;
         State state = STATES.get(player);
         if (state == null) return;
         boolean skeletonProtected = state.shieldHits > 0 && state.spirit != null && state.spirit.isAlive() && !state.spirit.dissolving();
-        if (!superArmor(player) && skillBody(player) && skillDamage(event.getSource())) {
-            clear(player, state);
-            var patch = EpicFightCapabilities.getEntityPatch(player, ServerPlayerPatch.class);
-            if (patch != null) patch.applyStun(yesman.epicfight.world.damagesource.StunType.SHORT, 0.25F);
-        }
         if (!skeletonProtected) return;
         CombatAudio.play(player, "susanoo_hurt");
         event.setAmount(event.getAmount() * 0.1F);

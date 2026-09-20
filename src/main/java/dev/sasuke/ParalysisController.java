@@ -35,7 +35,15 @@ public final class ParalysisController {
             event -> { if (active(target)) event.setCanceled(true); });
     }
 
+    private static void clearCaptureImmunity(LivingEntity target) {
+        if (target.level().isClientSide()) return;
+        // A grab dispels hard body and vanilla stun immunity, but preserves super armor.
+        target.removeEffect(yesman.epicfight.world.effect.EpicFightMobEffects.STUN_IMMUNITY.get());
+        target.removeEffect(SasukeMod.HARD_BODY.get());
+    }
+
     public static void capture(LivingEntity target) {
+        clearCaptureImmunity(target);
         CombatController.interruptForCapture(target);
         lockSkills(target);
         CAPTURES.putIfAbsent(target, new Facing(target.getYRot(), target.getXRot()));
@@ -71,6 +79,7 @@ public final class ParalysisController {
         if (event.phase != TickEvent.Phase.END) return;
         CAPTURES.entrySet().removeIf(entry -> !entry.getKey().isAlive() || entry.getKey().isRemoved() || !CombatController.captured(entry.getKey()));
         CAPTURES.forEach((target, facing) -> {
+            clearCaptureImmunity(target);
             var patch = EpicFightCapabilities.getEntityPatch(target, LivingEntityPatch.class);
             if (patch != null) CaptureStamina.drain(patch);
             target.setDeltaMovement(Vec3.ZERO);
@@ -100,6 +109,7 @@ public final class ParalysisController {
     @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
     public static void livingTick(net.minecraftforge.event.entity.living.LivingEvent.LivingTickEvent event) {
         if (CombatController.captured(event.getEntity())) {
+            clearCaptureImmunity(event.getEntity());
             var patch = EpicFightCapabilities.getEntityPatch(event.getEntity(), LivingEntityPatch.class);
             if (patch != null) CaptureStamina.drain(patch);
         }

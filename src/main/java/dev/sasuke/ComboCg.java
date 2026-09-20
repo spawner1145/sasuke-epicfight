@@ -12,6 +12,33 @@ import net.minecraft.sounds.SoundEvent;
 final class ComboCg extends Screen {
     private record Pending(SasukeNetwork.ComboMovie message, Object level) { }
     private static final java.util.List<Pending> PENDING = new java.util.ArrayList<>();
+    private static final double TRANSITION_TICKS = 10.0 / 60.0 * 20.0;
+    private static final double MOVIE_TICKS = 0.6 * 20.0;
+    private static final java.util.List<Pending> CAMERA = new java.util.ArrayList<>();
+
+    @net.minecraftforge.eventbus.api.SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.LOWEST)
+    public static void zoom(net.minecraftforge.client.event.ViewportEvent.ComputeFov event) {
+        var mc = Minecraft.getInstance();
+        if (mc.level == null) { CAMERA.clear(); return; }
+        double now = mc.level.getGameTime() + event.getPartialTick();
+        double zoom = 0;
+        var iterator = CAMERA.iterator();
+        while (iterator.hasNext()) {
+            var pending = iterator.next();
+            double start = pending.message().startTick();
+            double end = start + MOVIE_TICKS;
+            if (pending.level() != mc.level || now >= end + TRANSITION_TICKS) {
+                iterator.remove();
+                continue;
+            }
+            double progress = now < start ? (now - start + TRANSITION_TICKS) / TRANSITION_TICKS
+                : now <= end ? 1.0 : 1.0 - (now - end) / TRANSITION_TICKS;
+            progress = Math.max(0, Math.min(1, progress));
+            zoom = Math.max(zoom, progress * progress * (3 - 2 * progress));
+        }
+        // Scale the live FOV instead of changing the player's saved camera settings.
+        event.setFOV(event.getFOV() * (1.0 - 0.50 * zoom));
+    }
 
     @net.minecraftforge.eventbus.api.SubscribeEvent
     public static void advance(net.minecraftforge.event.TickEvent.RenderTickEvent event) {
@@ -53,6 +80,7 @@ final class ComboCg extends Screen {
     }
     static void play(SasukeNetwork.ComboMovie message) {
         PENDING.add(new Pending(message, Minecraft.getInstance().level));
+        if (message.showVideo()) CAMERA.add(new Pending(message, Minecraft.getInstance().level));
     }
     private static void show(double startTick) {
         var mc = Minecraft.getInstance();

@@ -19,6 +19,9 @@ import yesman.epicfight.api.forgeevent.EntityPatchRegistryEvent;
 public class SasukeMod {
     public static final String ID = "sasuke_epicfight";
     public static final DeferredRegister<Item> ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, ID);
+    public static final DeferredRegister<net.minecraft.world.effect.MobEffect> EFFECTS = DeferredRegister.create(ForgeRegistries.MOB_EFFECTS, ID);
+    public static final RegistryObject<net.minecraft.world.effect.MobEffect> HARD_BODY = EFFECTS.register("hard_body", () -> new BodyStunImmunityEffect("hard_body"));
+    public static final RegistryObject<net.minecraft.world.effect.MobEffect> SUPER_ARMOR = EFFECTS.register("super_armor", () -> new BodyStunImmunityEffect("super_armor"));
     public static final DeferredRegister<EntityType<?>> ENTITIES = DeferredRegister.create(ForgeRegistries.ENTITY_TYPES, ID);
     public static final RegistryObject<Item> KUSANAGI = ITEMS.register("kusanagi", () -> new SwordItem(Tiers.NETHERITE, 7, -2.0F, new Item.Properties().fireResistant()) {
         @Override
@@ -36,6 +39,7 @@ public class SasukeMod {
     public SasukeMod() {
         IEventBus bus = FMLJavaModLoadingContext.get().getModEventBus();
         ITEMS.register(bus);
+        EFFECTS.register(bus);
         ENTITIES.register(bus);
         bus.addListener(SasukeAnimations::register);
         bus.addListener(SasukeWeapon::register);

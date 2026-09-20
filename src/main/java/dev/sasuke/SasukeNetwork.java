@@ -69,7 +69,7 @@ public final class SasukeNetwork {
     }
 
     public static void comboCg(ServerPlayer caster, net.minecraft.world.entity.Entity target, long castTick) {
-        double start = castTick + (0.08 + 35.0 / 60.0) * 20.0;
+        double start = castTick + (0.08 + 60.0 / 60.0) * 20.0;
         for (ServerPlayer listener : caster.serverLevel().players()) {
             boolean video = listener == caster || listener == target;
             if (video || listener.distanceToSqr(caster) <= 4096) {
