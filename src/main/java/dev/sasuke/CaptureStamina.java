@@ -23,6 +23,12 @@ final class CaptureStamina {
     }
 
     static void drain(LivingEntityPatch<?> patch) {
+        // Capture still interrupts armor, but must not drain its stamina.
+        // This also runs while captured entities' normal effect ticks are suspended.
+        if (CombatController.superArmor(patch.getOriginal())) {
+            if (patch instanceof PlayerPatch<?> player) player.setStamina(player.getMaxStamina());
+            return;
+        }
         patch.setStunShield(0F);
         if (patch instanceof PlayerPatch<?> player) player.setStamina(0F);
         if (ADVANCED != null && !advancedFailed && ADVANCED.getDeclaringClass().isInstance(patch)) {

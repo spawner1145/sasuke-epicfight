@@ -468,7 +468,6 @@ public final class CombatController {
             state.spirit = null;
             state.shieldHits = 0;
         }
-        if (superArmor(player) && !captured(player)) patch.setStamina(patch.getMaxStamina());
         var resistance = player.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.KNOCKBACK_RESISTANCE);
         // Remove the legacy state-driven modifier; the body effects now own resistance.
         if (resistance != null) resistance.removeModifier(SUSANOO_KNOCKBACK);
